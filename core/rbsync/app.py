@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,8 +58,14 @@ class AppService:
 
     @property
     def db_path(self) -> Path:
+        """Which rekordbox database to use.
+
+        ``RBSYNC_DB_PATH`` exists so the app can be pointed at a copy — for
+        testing a sync without any risk to the real library.
+        """
         if self._db_path is None:
-            self._db_path = default_database_path()
+            override = os.environ.get("RBSYNC_DB_PATH")
+            self._db_path = Path(override) if override else default_database_path()
         return self._db_path
 
     def match_config(self) -> MatchConfig:

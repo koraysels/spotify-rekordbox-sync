@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from .cache import Cache
 from .matcher import Band, MatchCandidate, MatchConfig, TrackIndex, match_track
 from .models import Coverage, SpotifyPlaylist, SpotifyTrack
+from .normalize import normalize_artist, normalize_title
 
 
 @dataclass(slots=True)
@@ -86,9 +87,24 @@ def plan_playlist(
         if decision is not None:
             # The user already ruled on this track; honour it silently.
             if decision.accepted:
+                # Resolve the remembered id back to a real track, so the UI can
+                # show which file the decision pointed at instead of an empty
+                # cell. The track may since have been removed from rekordbox.
+                local = index.get(decision.content_id)
+                candidates = (
+                    [
+                        MatchCandidate(
+                            track=local, score=1.0, reason="cached",
+                            title_score=1.0, artist_score=1.0, duration_score=1.0,
+                        )
+                    ]
+                    if local is not None
+                    else []
+                )
                 track_plan = TrackPlan(
                     track=track, band=Band.ACCEPT,
                     content_id=decision.content_id, score=1.0, reason="cached",
+                    candidates=candidates,
                 )
             else:
                 track_plan = TrackPlan(track=track, band=Band.REJECT, reason="cached")
@@ -166,7 +182,11 @@ def wantlist_rows(plans: list[PlaylistPlan], deduplicate: bool = False) -> list[
                 continue
             track = track_plan.track
             if deduplicate:
-                key = track.id or f"{track.name}|{','.join(track.artists)}"
+                # Keyed on the normalized name rather than the Spotify id: the
+                # same record appears under different ids across playlists and
+                # releases, and the wantlist is a shopping list, not an index.
+                artists = ",".join(sorted(normalize_artist(a) for a in track.artists))
+                key = f"{normalize_title(track.name)}|{artists}"
                 if key in seen:
                     continue
                 seen.add(key)

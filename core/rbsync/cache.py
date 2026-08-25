@@ -12,6 +12,7 @@ only one that involves clicking.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,8 +54,12 @@ class Cache:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(self.path))
+        # The dev HTTP bridge serves requests on multiple threads, so the
+        # connection is shared rather than bound to its creating thread. Every
+        # statement is serialised through _lock to keep that safe.
+        self._db = sqlite3.connect(str(self.path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
+        self._lock = threading.RLock()
         self._db.execute("PRAGMA journal_mode=WAL")
         self._migrate()
 
@@ -122,7 +127,8 @@ class Cache:
         Rejections are stored explicitly. Treating "no row" and "rejected" as
         the same thing would re-propose a match the user already turned down.
         """
-        self._db.execute(
+        with self._lock:
+            self._db.execute(
             """
             INSERT INTO decisions (spotify_id, content_id, accepted, decided_at)
             VALUES (?, ?, ?, ?)
@@ -131,14 +137,15 @@ class Cache:
                 accepted   = excluded.accepted,
                 decided_at = excluded.decided_at
             """,
-            (spotify_id, content_id, 1 if accepted else 0, _now()),
-        )
-        self._db.commit()
+                (spotify_id, content_id, 1 if accepted else 0, _now()),
+            )
+            self._db.commit()
 
     def get_decision(self, spotify_id: str) -> Decision | None:
-        row = self._db.execute(
-            "SELECT * FROM decisions WHERE spotify_id = ?", (spotify_id,)
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM decisions WHERE spotify_id = ?", (spotify_id,)
+            ).fetchone()
         if row is None:
             return None
         return Decision(
@@ -149,13 +156,14 @@ class Cache:
         )
 
     def forget_decision(self, spotify_id: str) -> None:
-        self._db.execute("DELETE FROM decisions WHERE spotify_id = ?", (spotify_id,))
-        self._db.commit()
+        with self._lock:
+            self._db.execute("DELETE FROM decisions WHERE spotify_id = ?", (spotify_id,))
+            self._db.commit()
 
     # --- selection ---------------------------------------------------------
 
     def set_selected_playlists(self, playlist_ids: list[str]) -> None:
-        with self._db:
+        with self._lock, self._db:
             self._db.execute("DELETE FROM selection")
             self._db.executemany(
                 "INSERT OR IGNORE INTO selection (playlist_id) VALUES (?)",
@@ -163,7 +171,8 @@ class Cache:
             )
 
     def get_selected_playlists(self) -> list[str]:
-        rows = self._db.execute("SELECT playlist_id FROM selection").fetchall()
+        with self._lock:
+            rows = self._db.execute("SELECT playlist_id FROM selection").fetchall()
         return [r["playlist_id"] for r in rows]
 
     # --- history -----------------------------------------------------------
@@ -179,16 +188,18 @@ class Cache:
         playlist_name: str = "",
         backup_path: str = "",
     ) -> None:
-        self._db.execute(
-            """
-            INSERT INTO sync_history
-                (playlist_id, added, removed, matched, total, synced_at,
-                 playlist_name, backup_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (playlist_id, added, removed, matched, total, _now(), playlist_name, backup_path),
-        )
-        self._db.commit()
+        with self._lock:
+            self._db.execute(
+                """
+                INSERT INTO sync_history
+                    (playlist_id, added, removed, matched, total, synced_at,
+                     playlist_name, backup_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (playlist_id, added, removed, matched, total, _now(),
+                 playlist_name, backup_path),
+            )
+            self._db.commit()
 
     def get_history(self, playlist_id: str | None = None, limit: int = 50) -> list[SyncEntry]:
         """Past syncs, newest first.
@@ -196,15 +207,16 @@ class Cache:
         Kept so the user can answer "what did this thing actually do to my
         library, and which backup goes with it" long after the fact.
         """
-        if playlist_id:
-            rows = self._db.execute(
-                "SELECT * FROM sync_history WHERE playlist_id = ? ORDER BY id DESC LIMIT ?",
-                (playlist_id, limit),
-            ).fetchall()
-        else:
-            rows = self._db.execute(
-                "SELECT * FROM sync_history ORDER BY id DESC LIMIT ?", (limit,)
-            ).fetchall()
+        with self._lock:
+            if playlist_id:
+                rows = self._db.execute(
+                    "SELECT * FROM sync_history WHERE playlist_id = ? ORDER BY id DESC LIMIT ?",
+                    (playlist_id, limit),
+                ).fetchall()
+            else:
+                rows = self._db.execute(
+                    "SELECT * FROM sync_history ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
         return [self._entry(row) for row in rows]
 
     @staticmethod
@@ -222,10 +234,11 @@ class Cache:
         )
 
     def get_last_sync(self, playlist_id: str) -> SyncEntry | None:
-        row = self._db.execute(
-            "SELECT * FROM sync_history WHERE playlist_id = ? ORDER BY id DESC LIMIT 1",
-            (playlist_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM sync_history WHERE playlist_id = ? ORDER BY id DESC LIMIT 1",
+                (playlist_id,),
+            ).fetchone()
         if row is None:
             return None
         return self._entry(row)
@@ -233,15 +246,19 @@ class Cache:
     # --- settings ----------------------------------------------------------
 
     def set_setting(self, key: str, value: str) -> None:
-        self._db.execute(
-            "INSERT INTO settings (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (key, value),
-        )
-        self._db.commit()
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            self._db.commit()
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
-        row = self._db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
         return row["value"] if row else default
 
     def close(self) -> None:

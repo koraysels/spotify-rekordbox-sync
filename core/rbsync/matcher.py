@@ -143,6 +143,7 @@ class TrackIndex:
         self._tracks: list[_IndexedTrack] = []
         self._by_token: dict[str, set[int]] = defaultdict(set)
         self._by_isrc: dict[str, list[int]] = defaultdict(list)
+        self._by_id: dict[str, int] = {}
 
         for position, track in enumerate(tracks):
             title = normalize_title(track.title)
@@ -156,6 +157,7 @@ class TrackIndex:
                 tags=frozenset(extract_mix_tags(track.title)),
             )
             self._tracks.append(indexed)
+            self._by_id[str(track.id)] = position
             for token in set(title.split()):
                 self._by_token[token].add(position)
             for artist in indexed.artists:
@@ -167,6 +169,16 @@ class TrackIndex:
 
     def __len__(self) -> int:
         return len(self._tracks)
+
+    def get(self, content_id) -> LocalTrack | None:
+        """Look up an indexed track by its rekordbox content id."""
+        position = self._by_id.get(str(content_id))
+        return self._tracks[position].track if position is not None else None
+
+    @property
+    def tracks(self) -> list[LocalTrack]:
+        """The indexed collection, in insertion order."""
+        return [entry.track for entry in self._tracks]
 
     def search(self, track: SpotifyTrack) -> list[MatchCandidate]:
         """Return scored candidates, best first."""

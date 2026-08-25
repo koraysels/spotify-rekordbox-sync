@@ -186,3 +186,55 @@ class TestWantlistText:
         from rbsync.sync import wantlist_text
 
         assert wantlist_text([plan_playlist(PLAYLIST, [], index, cache)]) == ""
+
+
+class TestCachedAcceptKeepsCandidate:
+    def test_cached_accept_reports_the_matched_local_track(self, index, cache):
+        cache.remember_decision("s5", "rb2", accepted=True)
+        plan = plan_playlist(PLAYLIST, [sp("s5", "Unrecognisable", "Nobody", 999_000)], index, cache)
+        track_plan = plan.tracks[0]
+        assert track_plan.candidates, "a cached accept must still name the local track"
+        assert track_plan.candidates[0].track.id == "rb2"
+        assert track_plan.candidates[0].reason == "cached"
+
+    def test_cached_accept_for_an_unknown_id_has_no_candidate(self, index, cache):
+        cache.remember_decision("s5", "gone-from-library", accepted=True)
+        plan = plan_playlist(PLAYLIST, [sp("s5", "Whatever", "Nobody", 100_000)], index, cache)
+        assert plan.tracks[0].candidates == []
+
+    def test_cached_reject_has_no_candidate(self, index, cache):
+        cache.remember_decision("s1", "rb1", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Versace", "Migos", 195_000)], index, cache)
+        assert plan.tracks[0].candidates == []
+
+
+class TestWantlistDeduplication:
+    def test_same_track_under_different_ids_is_listed_once(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        a = sp("id-one", "Unreleased Dub Plate", "Anonymous Producer", 210_000)
+        b = sp("id-two", "Unreleased Dub Plate", "Anonymous Producer", 210_000)
+        plan_a = plan_playlist(PLAYLIST, [a], index, cache)
+        plan_b = plan_playlist(
+            SpotifyPlaylist(id="pl2", name="Other", track_count=1), [b], index, cache
+        )
+        assert len(wantlist_text([plan_a, plan_b]).splitlines()) == 1
+
+    def test_case_and_punctuation_differences_still_dedupe(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        a = sp("id-one", "Unreleased Dub Plate", "Anonymous Producer", 210_000)
+        b = sp("id-two", "unreleased  dub plate!", "anonymous producer", 210_000)
+        plan_a = plan_playlist(PLAYLIST, [a], index, cache)
+        plan_b = plan_playlist(
+            SpotifyPlaylist(id="pl2", name="Other", track_count=1), [b], index, cache
+        )
+        assert len(wantlist_text([plan_a, plan_b]).splitlines()) == 1
+
+    def test_genuinely_different_tracks_are_both_listed(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        a = sp("id-one", "Track One", "Someone", 210_000)
+        b = sp("id-two", "Track Two", "Someone", 210_000)
+        plan = plan_playlist(PLAYLIST, [a, b], index, cache)
+        assert len(wantlist_text([plan]).splitlines()) == 2

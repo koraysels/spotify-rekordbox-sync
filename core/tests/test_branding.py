@@ -53,3 +53,32 @@ class TestServiceUsesDefault:
         monkeypatch.delenv("RBSYNC_SPOTIFY_CLIENT_ID", raising=False)
         monkeypatch.setattr(branding, "DEFAULT_SPOTIFY_CLIENT_ID", "")
         assert service.status()["client_id_set"] is False
+
+
+class TestDatabaseOverride:
+    def test_env_var_selects_the_database(self, tmp_path, monkeypatch):
+        from rbsync.app import AppService
+        from rbsync.cache import Cache
+
+        target = tmp_path / "elsewhere.db"
+        target.write_bytes(b"")
+        monkeypatch.setenv("RBSYNC_HOME", str(tmp_path))
+        monkeypatch.setenv("RBSYNC_DB_PATH", str(target))
+        service = AppService(cache=Cache(tmp_path / "cache.db"))
+        try:
+            assert service.db_path == target
+        finally:
+            service.close()
+
+    def test_explicit_path_wins_over_env(self, tmp_path, monkeypatch):
+        from rbsync.app import AppService
+        from rbsync.cache import Cache
+
+        monkeypatch.setenv("RBSYNC_HOME", str(tmp_path))
+        monkeypatch.setenv("RBSYNC_DB_PATH", str(tmp_path / "env.db"))
+        explicit = tmp_path / "explicit.db"
+        service = AppService(db_path=explicit, cache=Cache(tmp_path / "cache.db"))
+        try:
+            assert service.db_path == explicit
+        finally:
+            service.close()

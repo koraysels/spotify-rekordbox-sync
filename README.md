@@ -150,6 +150,33 @@ Rekordbox tests run against a copy of your real `master.db` and skip when none
 is present. They never open the original. Point them elsewhere with
 `RBSYNC_TEST_DB=/path/to/master.db`.
 
+### Working on the interface
+
+Rebuilding a native bundle for every CSS change is slow, so the core can serve
+the same JSON-RPC API over localhost HTTP. The UI detects that it is not running
+inside Tauri and talks to the bridge instead.
+
+```bash
+cd core && .venv/bin/python -m rbsync.cli serve
+cd ui && npm run dev
+```
+
+Add a fake Spotify account — playlists built from your real collection, plus
+tracks nobody owns — and point the app at a copy of your database, so you can
+exercise the whole flow including Apply without any risk:
+
+```bash
+cp ~/Library/Pioneer/rekordbox/master.db /tmp/demo_master.db
+RBSYNC_HOME=/tmp/rbsync-demo \
+RBSYNC_DB_PATH=/tmp/demo_master.db \
+RBSYNC_FAKE_SPOTIFY=1 \
+  core/.venv/bin/python -m rbsync.cli serve
+```
+
+The bridge binds to 127.0.0.1 only and is never started by the packaged app, but
+anything that can reach it can write to the configured rekordbox database — do
+not leave it running.
+
 To build the desktop app:
 
 ```bash

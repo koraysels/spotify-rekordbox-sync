@@ -253,6 +253,7 @@ thead th {
 
 tbody td {
   padding: 5px 10px;
+  overflow: hidden;
   border-bottom: 1px solid rgba(38, 43, 51, 0.45);
   max-width: 0;
   overflow: hidden;
@@ -276,7 +277,7 @@ tbody td {
   width: 28px;
 }
 .col-band {
-  width: 84px;
+  width: 92px;
 }
 .col-score {
   width: 60px;
@@ -286,12 +287,14 @@ tbody td {
 }
 
 .band {
-  font-size: 10px;
+  display: inline-block;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
   border-radius: 3px;
   border: 1px solid;
+  white-space: nowrap;
 }
 
 .band.accept {

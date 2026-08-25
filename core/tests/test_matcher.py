@@ -165,3 +165,15 @@ class TestDuplicatePreference:
             for _ in range(5)
         }
         assert len(picks) == 1
+
+
+class TestLookupById:
+    def test_finds_an_indexed_track(self, config):
+        track = local("rb1", "Versace", "Migos", 195)
+        assert TrackIndex([track]).get("rb1") == track
+
+    def test_unknown_id_is_none(self, config):
+        assert TrackIndex([local("rb1", "Versace", "Migos", 195)]).get("nope") is None
+
+    def test_lookup_is_string_keyed(self, config):
+        assert TrackIndex([local("7", "Versace", "Migos", 195)]).get(7) is not None

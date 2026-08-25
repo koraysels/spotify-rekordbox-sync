@@ -128,8 +128,15 @@ export function TrackTable({
                   <td className="col-spotify" title={row.track.display}>
                     {row.track.display}
                   </td>
-                  <td className="col-local" title={best?.folderPath ?? ""}>
-                    {best ? best.display : <span className="muted">no local match</span>}
+                  <td className="col-local" title={row.band === "reject" ? "" : best?.folderPath ?? ""}>
+                    {row.band === "reject" || !best ? (
+                      // A rejected row's best candidate scored too low to use.
+                      // Showing it here reads as "this is your match", which it
+                      // is not, so the row states plainly that nothing matched.
+                      <span className="muted">no local match</span>
+                    ) : (
+                      best.display
+                    )}
                   </td>
                   <td className="col-score">{row.score ? row.score.toFixed(2) : "—"}</td>
                 </tr>

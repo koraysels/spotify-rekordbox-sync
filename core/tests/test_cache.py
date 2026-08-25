@@ -188,3 +188,26 @@ class TestMigration:
             assert cache.get_history()[0].playlist_name == "New"
         finally:
             cache.close()
+
+
+class TestThreadSafety:
+    def test_usable_from_another_thread(self, cache):
+        import threading
+
+        errors: list[Exception] = []
+
+        def writer(index: int):
+            try:
+                cache.remember_decision(f"s{index}", f"rb{index}", accepted=True)
+                cache.get_decision(f"s{index}")
+            except Exception as exc:  # noqa: BLE001 - recorded for the assertion
+                errors.append(exc)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        assert errors == []
+        assert all(cache.get_decision(f"s{i}") is not None for i in range(8))

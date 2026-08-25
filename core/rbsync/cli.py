@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="confirm writing to master.db (required)",
     )
 
+    serve = sub.add_parser(
+        "serve", help="run the JSON-RPC bridge on localhost (development only)"
+    )
+    serve.add_argument("--port", type=int, default=8765)
+
     history = sub.add_parser("history", help="show past syncs")
     history.add_argument("--limit", type=int, default=20)
     history.add_argument("--playlist", dest="playlist", default=None)
@@ -111,6 +116,18 @@ def _dispatch(args, service: AppService) -> int:
         print(f"auto accept:    {config.auto_accept}")
         print(f"reject below:   {config.reject}")
         print(f"allow removals: {service.allow_removals()}")
+        return 0
+
+    if args.command == "serve":
+        from . import devfixtures
+        from .httpbridge import serve as serve_bridge
+
+        if devfixtures.enabled():
+            print("RBSYNC_FAKE_SPOTIFY=1 - serving a fake Spotify account (demo data)")
+            service.load_library()
+            devfixtures.install(service)
+
+        serve_bridge(service, port=args.port)
         return 0
 
     if args.command == "history":
