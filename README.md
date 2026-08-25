@@ -124,6 +124,10 @@ To build the desktop app:
 cd ui && npm install && npm run tauri build
 ```
 
+**Requires Rust 1.88 or newer.** Tauri's dependency tree (`icu_properties`,
+`plist`, `time`) will not compile on older toolchains. Homebrew's `rust`
+formula may lag; `rustup` is the reliable way to stay current.
+
 ## Architecture
 
 ```
