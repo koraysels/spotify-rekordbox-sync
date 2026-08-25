@@ -182,3 +182,13 @@ def wantlist_rows(plans: list[PlaylistPlan], deduplicate: bool = False) -> list[
                 }
             )
     return rows
+
+
+def wantlist_text(plans: list[PlaylistPlan], deduplicate: bool = True) -> str:
+    """The wantlist as plain ``Artist - Title`` lines.
+
+    Search tools like Soulseek take a pasted query, not a CSV, so the shopping
+    list has to exist in a form that can be pasted straight into one.
+    """
+    rows = wantlist_rows(plans, deduplicate=deduplicate)
+    return "\n".join(f"{row['artist']} - {row['title']}".strip(" -") for row in rows)

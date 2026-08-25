@@ -89,3 +89,9 @@ class TestReview:
         ]})
         assert service.cache.get_decision("s1").accepted is True
         assert service.cache.get_decision("s2").accepted is False
+
+
+class TestWantlistExportGuards:
+    def test_unknown_format_is_rejected(self, server):
+        response = call(server, "wantlist.export", {"format": "xml"})
+        assert "unsupported wantlist format" in response["error"]["message"]

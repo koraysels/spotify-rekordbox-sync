@@ -144,3 +144,45 @@ class TestConfigPassthrough:
         )
         assert plan.tracks[0].band is Band.REVIEW
         assert plan.to_add == []
+
+
+class TestWantlistText:
+    def test_text_lines_are_artist_dash_title(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        plan = plan_playlist(PLAYLIST, [sp("s9", "Gone", "Ghost", 100_000)], index, cache)
+        text = wantlist_text([plan])
+        assert text == "Ghost - Gone"
+
+    def test_text_has_one_line_per_track(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        plan = plan_playlist(
+            PLAYLIST,
+            [sp("s8", "Gone", "Ghost", 100_000), sp("s9", "Lost", "Phantom", 100_000)],
+            index, cache,
+        )
+        assert len(wantlist_text([plan]).splitlines()) == 2
+
+    def test_text_excludes_matched_tracks(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        plan = plan_playlist(
+            PLAYLIST,
+            [sp("s1", "Versace", "Migos", 195_000), sp("s9", "Gone", "Ghost", 100_000)],
+            index, cache,
+        )
+        assert "Versace" not in wantlist_text([plan])
+
+    def test_text_deduplicates(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        track = sp("s9", "Gone", "Ghost", 100_000)
+        a = plan_playlist(PLAYLIST, [track], index, cache)
+        b = plan_playlist(SpotifyPlaylist(id="p2", name="Other", track_count=1), [track], index, cache)
+        assert len(wantlist_text([a, b]).splitlines()) == 1
+
+    def test_empty_plan_is_empty_string(self, index, cache):
+        from rbsync.sync import wantlist_text
+
+        assert wantlist_text([plan_playlist(PLAYLIST, [], index, cache)]) == ""

@@ -59,3 +59,17 @@ class TestConfigCommand:
         main(["config", "--auto-accept", "0.95"])
         main(["config"])
         assert "0.95" in capsys.readouterr().out
+
+
+class TestWantlistOptions:
+    def test_format_defaults_to_none(self):
+        args = build_parser().parse_args(["wantlist"])
+        assert args.format is None
+
+    def test_format_accepts_txt(self):
+        args = build_parser().parse_args(["wantlist", "--format", "txt"])
+        assert args.format == "txt"
+
+    def test_out_path_parses(self):
+        args = build_parser().parse_args(["wantlist", "--out", "/tmp/w.csv"])
+        assert args.out == "/tmp/w.csv"

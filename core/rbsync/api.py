@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import paths
 from .app import AppService
 from .rpc import RpcServer
 from .serialize import playlist_to_dict, sync_plan_to_dict
@@ -120,12 +121,25 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             return {"rows": []}
         return {"rows": wantlist_rows(plan.playlists, deduplicate=True)}
 
-    def wantlist_export(path=None, **_):
+    def wantlist_export(path=None, format="both", **_):
+        # Validate the argument before the state check, so a bad format reports
+        # the bad format rather than blaming the missing plan.
+        if format not in ("csv", "txt", "both"):
+            raise ValueError(f"unsupported wantlist format: {format}")
         plan = state.get("plan")
         if plan is None:
             raise RuntimeError("Nothing to export. Run sync.plan first.")
-        target = service.export_wantlist(plan, Path(path) if path else None)
-        return {"path": str(target)}
+
+        formats = ("csv", "txt") if format == "both" else (format,)
+        written: list[str] = []
+        for fmt in formats:
+            target = Path(path) if path else None
+            if target is not None and len(formats) > 1:
+                target = target.with_suffix(f".{fmt}")
+            elif target is None:
+                target = paths.exports_dir() / f"wantlist.{fmt}"
+            written.append(str(service.export_wantlist(plan, target, fmt=fmt)))
+        return {"paths": written, "path": written[0]}
 
     for name, handler in (
         ("status", status),

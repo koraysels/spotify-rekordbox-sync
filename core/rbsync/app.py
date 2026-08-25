@@ -24,7 +24,7 @@ from .rekordbox import (
     is_rekordbox_running,
 )
 from .spotify import SpotifyClient, Tokens, refresh
-from .sync import PlaylistPlan, SyncPlan, plan_playlist, wantlist_rows
+from .sync import PlaylistPlan, SyncPlan, plan_playlist, wantlist_rows, wantlist_text
 from .tokens import TokenStore
 
 log = logging.getLogger(__name__)
@@ -227,10 +227,28 @@ class AppService:
 
     # --- export ------------------------------------------------------------
 
-    def export_wantlist(self, plan: SyncPlan, path: Path | None = None) -> Path:
-        rows = wantlist_rows(plan.playlists, deduplicate=True)
+    def export_wantlist(
+        self, plan: SyncPlan, path: Path | None = None, fmt: str | None = None
+    ) -> Path:
+        """Write the missing-tracks list.
+
+        Two formats, because they serve different jobs: CSV for keeping track of
+        what to buy, and plain ``Artist - Title`` lines for pasting straight
+        into a search tool.
+        """
         target = Path(path) if path else paths.exports_dir() / "wantlist.csv"
+        if fmt is None:
+            fmt = "txt" if target.suffix.lower() in (".txt", ".text") else "csv"
+        if fmt not in ("csv", "txt"):
+            raise ValueError(f"unsupported wantlist format: {fmt}")
+
         target.parent.mkdir(parents=True, exist_ok=True)
+
+        if fmt == "txt":
+            target.write_text(wantlist_text(plan.playlists) + "\n", encoding="utf-8")
+            return target
+
+        rows = wantlist_rows(plan.playlists, deduplicate=True)
         fields = ["playlist", "artist", "title", "album", "duration_seconds", "isrc", "url"]
         with open(target, "w", newline="", encoding="utf-8") as fh:
             writer = csv.DictWriter(fh, fieldnames=fields)

@@ -46,6 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     wantlist = sub.add_parser("wantlist", help="export tracks you are missing")
     wantlist.add_argument("--out", dest="out")
+    wantlist.add_argument(
+        "--format", dest="format", choices=("csv", "txt"), default=None,
+        help="csv for a spreadsheet, txt for pasting into a search tool",
+    )
 
     return parser
 
@@ -128,7 +132,7 @@ def _dispatch(args, service: AppService) -> int:
 
         if args.command == "wantlist":
             rows = wantlist_rows(plan.playlists, deduplicate=True)
-            target = service.export_wantlist(plan, args.out)
+            target = service.export_wantlist(plan, args.out, fmt=args.format)
             print(f"{len(rows)} missing track(s) written to {target}")
             return 0
 
