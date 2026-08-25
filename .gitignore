@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.spec
+
+# Node
+node_modules/
+ui/dist/
+
+# Rust / Tauri
+target/
+
+# Never commit rekordbox databases or backups
+*.db
+*.db-journal
+backups/
+
+# OS
+.DS_Store
