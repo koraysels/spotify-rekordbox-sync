@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the rbsync window: spawn the Python core and open the Spotify sign-in page.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "binaries/rbsync-core", "sidecar": true }]
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "binaries/rbsync-core", "sidecar": true }]
+    }
+  ]
+}
