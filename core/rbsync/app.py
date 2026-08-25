@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import paths
+from .branding import default_client_id
 from .cache import Cache
 from .matcher import Band, MatchConfig, TrackIndex
 from .models import Coverage, SpotifyPlaylist, SpotifyTrack
@@ -71,7 +72,8 @@ class AppService:
         return self.cache.get_setting(SETTING_ALLOW_REMOVALS, "0") == "1"
 
     def client_id(self) -> str:
-        return self.cache.get_setting(SETTING_CLIENT_ID, "") or ""
+        """A Client ID the user set, otherwise the one bundled with the build."""
+        return (self.cache.get_setting(SETTING_CLIENT_ID, "") or "").strip() or default_client_id()
 
     def status(self) -> dict:
         return {
@@ -80,6 +82,7 @@ class AppService:
             "tracks_indexed": self._track_count,
             "authenticated": self.tokens.load() is not None,
             "client_id_set": bool(self.client_id()),
+            "client_id_is_bundled": not (self.cache.get_setting(SETTING_CLIENT_ID, "") or "").strip(),
             "selected_playlists": self.cache.get_selected_playlists(),
         }
 

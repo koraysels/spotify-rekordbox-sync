@@ -1,3 +1,8 @@
+/* macOS control metrics and materials.
+   No component library: the maintained React "native look" libraries are
+   web design systems wearing a costume, and they read less native than
+   system fonts on correctly sized controls. */
+
 :root {
   --bg: #0f1114;
   --panel: #15181d;
@@ -35,12 +40,63 @@ body {
 
 button {
   font: inherit;
+  font-size: 12px;
   border: 1px solid var(--line);
-  background: var(--panel-2);
+  background: linear-gradient(180deg, #22272f 0%, #1c2027 100%);
   color: var(--text);
-  padding: 5px 12px;
-  border-radius: 5px;
-  cursor: pointer;
+  /* AppKit push button: 22pt tall, 6pt corner radius. */
+  min-height: 22px;
+  padding: 3px 11px;
+  border-radius: 6px;
+  cursor: default;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  transition: filter 90ms ease;
+}
+
+button:active:not(:disabled) {
+  filter: brightness(0.86);
+}
+
+button:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.55);
+  outline-offset: 1px;
+}
+
+input:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 3px solid rgba(10, 132, 255, 0.55);
+  outline-offset: 1px;
+}
+
+input[type="checkbox"] {
+  accent-color: #0a84ff;
+  width: 14px;
+  height: 14px;
+}
+
+input[type="range"] {
+  accent-color: #0a84ff;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 button:hover:not(:disabled) {
@@ -53,10 +109,10 @@ button:disabled {
 }
 
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06210f;
-  font-weight: 600;
+  background: linear-gradient(180deg, #23c65f 0%, #16a44c 100%);
+  border-color: #128a3f;
+  color: #04220f;
+  font-weight: 590;
 }
 
 button.danger {

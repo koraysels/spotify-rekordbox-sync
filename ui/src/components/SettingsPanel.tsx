@@ -31,13 +31,14 @@ export function SettingsPanel({
         <section>
           <h3>Spotify</h3>
           <p className="hint">
-            Create a free app at developer.spotify.com, add{" "}
+            Sign-in normally needs no setup. Supply your own Client ID only if you want to
+            use your own Spotify app: create one at developer.spotify.com, add{" "}
             <code>http://127.0.0.1:8888/callback</code> as a redirect URI, and paste the
-            Client ID here.
+            Client ID below. Leave it empty to use the bundled app.
           </p>
           <input
             className="field"
-            placeholder="Spotify Client ID"
+            placeholder="Spotify Client ID (optional)"
             value={clientId}
             onChange={(event) => setClientId(event.target.value)}
           />

@@ -70,6 +70,7 @@ export interface Status {
   tracks_indexed: number;
   authenticated: boolean;
   client_id_set: boolean;
+  client_id_is_bundled: boolean;
   selected_playlists: string[];
 }
 

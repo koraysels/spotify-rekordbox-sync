@@ -44,20 +44,32 @@ tools. The app shows a warning about this but cannot detect it for you.
 
 ## Setup
 
-### 1. Spotify Client ID
+### 1. Sign in to Spotify
 
-Spotify does not allow desktop apps to ship a shared secret, and their
-development mode caps an app at 25 users, so each user registers their own free
-app. It takes about three minutes:
+Press **Sign in with Spotify**. That is the whole setup — the app ships its own
+Spotify Client ID and uses PKCE, so there is no secret to paste and nothing to
+configure.
 
-1. Go to <https://developer.spotify.com/dashboard> and log in.
-2. **Create app**. Any name and description will do.
-3. Add this exact **Redirect URI**: `http://127.0.0.1:8888/callback`
-4. Select the **Web API** checkbox, save.
-5. Copy the **Client ID**.
-6. In the app: **Settings → Spotify → paste the Client ID → Connect Spotify.**
+A Client ID is public information under PKCE (it appears in the authorize URL of
+every desktop and mobile app), which is why it can safely be bundled.
 
-No client secret is needed. Authentication uses PKCE.
+If you would rather use your own Spotify app, put its Client ID in
+**Settings → Spotify** with `http://127.0.0.1:8888/callback` as a redirect URI.
+A Client ID you set always overrides the bundled one.
+
+#### The hard limit on sharing this with friends
+
+Spotify caps a Development Mode app at **5 authenticated users**, and each of
+them has to be added by email in the app owner's Developer Dashboard under
+*Users Management*. The app owner also needs Spotify Premium.
+
+Extended Quota Mode removes the cap, but as of 2026 Spotify only grants it to
+registered organizations with a launched service and **250,000+ monthly active
+users**. That is not attainable for a tool like this.
+
+So realistically: you plus four friends on the bundled app. Beyond that, each
+additional person must create their own free Spotify app (three minutes) and
+paste their own Client ID into Settings — that path has no user limit.
 
 ### 2. Sync
 

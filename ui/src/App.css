@@ -11,9 +11,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 8px 12px;
+  /* Left inset clears the native traffic lights sitting over our chrome. */
+  padding: 10px 12px 10px 88px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
+  min-height: 44px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.statusbar * {
+  /* Children must not swallow the drag gesture, but controls still need clicks. */
+  -webkit-user-select: none;
 }
 
 .statusbar-items {
@@ -426,4 +435,36 @@ li.empty {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
+}
+
+.connect {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.connect-card {
+  max-width: 460px;
+  text-align: center;
+}
+
+.connect-card h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+
+.connect-card p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+
+button.big {
+  min-height: 34px;
+  padding: 8px 22px;
+  font-size: 14px;
+  border-radius: 8px;
 }

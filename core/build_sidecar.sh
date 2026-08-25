@@ -17,6 +17,30 @@ fi
 uv pip install --python "$VENV/bin/python" -q -e "$HERE" pyinstaller
 
 cd "$HERE"
+
+# Bake the bundled Spotify Client ID into the frozen core, so the shipped app
+# can sign in with one click. A Client ID is public information under PKCE;
+# no secret is embedded. Restored afterwards so the working tree stays clean.
+BRANDING="$HERE/rbsync/branding.py"
+BRANDING_BACKUP="$(mktemp)"
+cp "$BRANDING" "$BRANDING_BACKUP"
+restore_branding() { cp "$BRANDING_BACKUP" "$BRANDING"; rm -f "$BRANDING_BACKUP"; }
+trap restore_branding EXIT
+
+if [ -n "${RBSYNC_SPOTIFY_CLIENT_ID:-}" ]; then
+  python3 - "$BRANDING" "$RBSYNC_SPOTIFY_CLIENT_ID" <<'PYEOF'
+import sys, pathlib
+path, client_id = pathlib.Path(sys.argv[1]), sys.argv[2]
+text = path.read_text()
+text = text.replace('DEFAULT_SPOTIFY_CLIENT_ID = ""',
+                    f'DEFAULT_SPOTIFY_CLIENT_ID = "{client_id}"')
+path.write_text(text)
+PYEOF
+  echo "bundled Spotify Client ID: ${RBSYNC_SPOTIFY_CLIENT_ID:0:6}..."
+else
+  echo "no RBSYNC_SPOTIFY_CLIENT_ID set - users must supply their own Client ID"
+fi
+
 "$VENV/bin/pyinstaller" \
   --noconfirm --clean --onefile \
   --name rbsync-core \

@@ -6,6 +6,7 @@ import "./App.css";
 import { rpc } from "./rpc";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
+import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -191,7 +192,7 @@ export default function App() {
     [activePlaylist, plans],
   );
 
-  const needsSetup = settings !== null && !settings.clientId;
+  const connected = Boolean(status?.authenticated);
 
   return (
     <div className="app">
@@ -212,15 +213,20 @@ export default function App() {
           }}
         />
       )}
-      {needsSetup && (
-        <Banner tone="info" message="Add your Spotify Client ID in Settings to get started." />
-      )}
       {status?.rekordbox_running && (
         <Banner tone="warn" message="Rekordbox is running. Quit it completely before applying changes." />
       )}
       {error && <Banner tone="error" message={error} onDismiss={() => setError(null)} />}
       {notice && <Banner tone="info" message={notice} onDismiss={() => setNotice(null)} />}
 
+      {!connected && status !== null ? (
+        <ConnectPanel
+          clientIdSet={Boolean(status.client_id_set)}
+          busy={busy !== null}
+          onConnect={connectSpotify}
+          onSettings={() => setShowSettings(true)}
+        />
+      ) : (
       <main className="main">
         <PlaylistList
           playlists={playlists}
@@ -245,6 +251,7 @@ export default function App() {
           onLastClicked={setLastClicked}
         />
       </main>
+      )}
 
       <BottomBar
         selectedCount={selected.size}

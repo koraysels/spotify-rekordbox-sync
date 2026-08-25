@@ -9,7 +9,7 @@ interface Props {
 
 export function StatusBar({ status, busy, onSettings, onHistory }: Props) {
   return (
-    <header className="statusbar">
+    <header className="statusbar" data-tauri-drag-region>
       <div className="statusbar-items">
         <Item
           label="rekordbox"
