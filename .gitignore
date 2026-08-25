@@ -23,5 +23,9 @@ ui/src-tauri/binaries/
 *.db-journal
 backups/
 
+# Tooling caches
+.serena/
+*.egg-info/
+
 # OS
 .DS_Store
