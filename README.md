@@ -14,7 +14,9 @@ rekordbox without needing internet.
 - Creates the playlists in rekordbox under a `Spotify` folder, containing the
   local files it matched.
 - Shows per-playlist coverage — what percentage of the playlist you actually own.
-- Exports a wantlist of the tracks you are missing, so you know what to go buy.
+- Exports a wantlist of the tracks you are missing, so you know what to go buy —
+  as CSV, and as plain `Artist - Title` lines you can paste into Soulseek.
+- Keeps a history of every write, with the backup that goes with it.
 
 It writes directly to rekordbox's `master.db`. It does not use XML export.
 
@@ -91,6 +93,23 @@ leading track numbers, and diacritics.
 When several copies of the same track exist in your collection, the app prefers
 the analysed, highest-bitrate copy, and picks the same one every run.
 
+## History and backups
+
+Every Apply is recorded: which playlist, how many tracks added and removed,
+the coverage at the time, and the path of the backup taken immediately before.
+See it under **History** in the app, or:
+
+```bash
+rbsync history --limit 20
+```
+
+To roll back, quit rekordbox and copy the backup over `master.db`:
+
+```bash
+cp ~/Library/Application\ Support/rbsync/backups/master_<timestamp>.db \
+   ~/Library/Pioneer/rekordbox/master.db
+```
+
 ## Command line
 
 The Python core works on its own:
@@ -101,7 +120,9 @@ rbsync playlists
 rbsync select <playlist-id> <playlist-id>
 rbsync plan
 rbsync apply --yes
+rbsync history
 rbsync wantlist --out ~/Desktop/wantlist.csv
+rbsync wantlist --format txt --out ~/Desktop/wantlist.txt
 ```
 
 `apply` refuses to run without `--yes`.
@@ -140,6 +161,18 @@ Tauri v2 shell (Rust)  — window, OAuth loopback listener, sidecar lifecycle
 
 pyrekordbox handles SQLCipher unlocking and rekordbox's update-sequence
 bookkeeping, which is why the core is Python rather than Rust.
+
+### Why a frozen binary instead of uv/uvx
+
+`uv` is used for development, but the shipped app freezes the core with
+PyInstaller instead of resolving it at runtime. Running the core via `uvx` would
+require every user to install `uv` first and to be online the first time they
+launch — for an app whose entire purpose is working offline, that is the wrong
+trade. The frozen binary is self-contained and needs neither.
+
+The cost is about 1.7 seconds of startup while the bundle unpacks. That is paid
+once when the app launches, because the sidecar process stays alive for the whole
+session, not per request.
 
 ## Status
 

@@ -73,3 +73,19 @@ class TestWantlistOptions:
     def test_out_path_parses(self):
         args = build_parser().parse_args(["wantlist", "--out", "/tmp/w.csv"])
         assert args.out == "/tmp/w.csv"
+
+
+class TestHistoryCommand:
+    def test_history_parses_limit(self):
+        args = build_parser().parse_args(["history", "--limit", "5"])
+        assert args.limit == 5
+
+    def test_history_defaults_to_twenty(self):
+        assert build_parser().parse_args(["history"]).limit == 20
+
+    def test_history_accepts_playlist_filter(self):
+        assert build_parser().parse_args(["history", "--playlist", "p1"]).playlist == "p1"
+
+    def test_history_reports_when_empty(self, capsys):
+        assert main(["history"]) == 0
+        assert "No syncs recorded yet" in capsys.readouterr().out

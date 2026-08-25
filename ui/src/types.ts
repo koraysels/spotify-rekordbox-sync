@@ -93,3 +93,15 @@ export interface Decision {
   content_id: string;
   accepted: boolean;
 }
+
+export interface HistoryEntry {
+  playlistId: string;
+  playlistName: string;
+  added: number;
+  removed: number;
+  matched: number;
+  total: number;
+  coveragePercent: number;
+  syncedAt: string;
+  backupPath: string;
+}

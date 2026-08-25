@@ -4,9 +4,10 @@ interface Props {
   status: Status | null;
   busy: string | null;
   onSettings: () => void;
+  onHistory: () => void;
 }
 
-export function StatusBar({ status, busy, onSettings }: Props) {
+export function StatusBar({ status, busy, onSettings, onHistory }: Props) {
   return (
     <header className="statusbar">
       <div className="statusbar-items">
@@ -33,6 +34,9 @@ export function StatusBar({ status, busy, onSettings }: Props) {
       </div>
       <div className="statusbar-right">
         {busy && <span className="busy">{busy}</span>}
+        <button className="ghost" onClick={onHistory}>
+          History
+        </button>
         <button className="ghost" onClick={onSettings}>
           Settings
         </button>

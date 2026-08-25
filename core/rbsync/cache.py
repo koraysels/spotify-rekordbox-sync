@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +35,14 @@ class SyncEntry:
     matched: int
     total: int
     synced_at: str
+    playlist_name: str = ""
+    backup_path: str = ""
+
+    @property
+    def coverage_percent(self) -> float:
+        if self.total == 0:
+            return 0.0
+        return round(100.0 * self.matched / self.total, 1)
 
 
 def _now() -> str:
@@ -54,6 +62,28 @@ class Cache:
         version = self._db.execute("PRAGMA user_version").fetchone()[0]
         if version >= SCHEMA_VERSION:
             return
+        self._create_schema()
+        if version < 2:
+            self._add_history_columns()
+        self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        self._db.commit()
+
+    def _add_history_columns(self) -> None:
+        """Version 2 records which playlist and which backup a sync belonged to.
+
+        Older rows keep their data and read the new columns as empty rather than
+        being dropped and recreated.
+        """
+        existing = {
+            row["name"] for row in self._db.execute("PRAGMA table_info(sync_history)")
+        }
+        for column in ("playlist_name", "backup_path"):
+            if column not in existing:
+                self._db.execute(
+                    f"ALTER TABLE sync_history ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                )
+
+    def _create_schema(self) -> None:
         self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS decisions (
@@ -72,7 +102,9 @@ class Cache:
                 removed     INTEGER NOT NULL,
                 matched     INTEGER NOT NULL,
                 total       INTEGER NOT NULL,
-                synced_at   TEXT NOT NULL
+                synced_at   TEXT NOT NULL,
+                playlist_name TEXT NOT NULL DEFAULT '',
+                backup_path   TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_sync_playlist ON sync_history(playlist_id, id DESC);
             CREATE TABLE IF NOT EXISTS settings (
@@ -81,8 +113,6 @@ class Cache:
             );
             """
         )
-        self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-        self._db.commit()
 
     # --- decisions ---------------------------------------------------------
 
@@ -139,16 +169,57 @@ class Cache:
     # --- history -----------------------------------------------------------
 
     def record_sync(
-        self, playlist_id: str, *, added: int, removed: int, matched: int, total: int
+        self,
+        playlist_id: str,
+        *,
+        added: int,
+        removed: int,
+        matched: int,
+        total: int,
+        playlist_name: str = "",
+        backup_path: str = "",
     ) -> None:
         self._db.execute(
             """
-            INSERT INTO sync_history (playlist_id, added, removed, matched, total, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO sync_history
+                (playlist_id, added, removed, matched, total, synced_at,
+                 playlist_name, backup_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (playlist_id, added, removed, matched, total, _now()),
+            (playlist_id, added, removed, matched, total, _now(), playlist_name, backup_path),
         )
         self._db.commit()
+
+    def get_history(self, playlist_id: str | None = None, limit: int = 50) -> list[SyncEntry]:
+        """Past syncs, newest first.
+
+        Kept so the user can answer "what did this thing actually do to my
+        library, and which backup goes with it" long after the fact.
+        """
+        if playlist_id:
+            rows = self._db.execute(
+                "SELECT * FROM sync_history WHERE playlist_id = ? ORDER BY id DESC LIMIT ?",
+                (playlist_id, limit),
+            ).fetchall()
+        else:
+            rows = self._db.execute(
+                "SELECT * FROM sync_history ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._entry(row) for row in rows]
+
+    @staticmethod
+    def _entry(row) -> SyncEntry:
+        keys = row.keys()
+        return SyncEntry(
+            playlist_id=row["playlist_id"],
+            added=row["added"],
+            removed=row["removed"],
+            matched=row["matched"],
+            total=row["total"],
+            synced_at=row["synced_at"],
+            playlist_name=row["playlist_name"] if "playlist_name" in keys else "",
+            backup_path=row["backup_path"] if "backup_path" in keys else "",
+        )
 
     def get_last_sync(self, playlist_id: str) -> SyncEntry | None:
         row = self._db.execute(
@@ -157,14 +228,7 @@ class Cache:
         ).fetchone()
         if row is None:
             return None
-        return SyncEntry(
-            playlist_id=row["playlist_id"],
-            added=row["added"],
-            removed=row["removed"],
-            matched=row["matched"],
-            total=row["total"],
-            synced_at=row["synced_at"],
-        )
+        return self._entry(row)
 
     # --- settings ----------------------------------------------------------
 

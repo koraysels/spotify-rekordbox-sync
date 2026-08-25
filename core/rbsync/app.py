@@ -204,8 +204,14 @@ class AppService:
                 removed=result.removed,
                 matched=playlist_plan.coverage.matched,
                 total=playlist_plan.coverage.total,
+                playlist_name=result.playlist_name,
+                backup_path=result.backup_path,
             )
         return results
+
+    def history(self, playlist_id: str | None = None, limit: int = 50) -> list:
+        """Past syncs, newest first."""
+        return self.cache.get_history(playlist_id=playlist_id, limit=limit)
 
     # --- review ------------------------------------------------------------
 

@@ -7,6 +7,7 @@ import { rpc } from "./rpc";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
 import { PlaylistList } from "./components/PlaylistList";
+import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import { TrackTable, type BandFilter } from "./components/TrackTable";
@@ -37,6 +38,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const [bandFilter, setBandFilter] = useState<BandFilter>("all");
   const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
@@ -193,7 +195,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <StatusBar status={status} busy={busy} onSettings={() => setShowSettings(true)} />
+      <StatusBar
+        status={status}
+        busy={busy}
+        onSettings={() => setShowSettings(true)}
+        onHistory={() => setShowHistory(true)}
+      />
 
       {cloudWarning && (
         <Banner
@@ -249,6 +256,8 @@ export default function App() {
         onApply={applySync}
         onExport={exportWantlist}
       />
+
+      {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
 
       {showSettings && settings && (
         <SettingsPanel

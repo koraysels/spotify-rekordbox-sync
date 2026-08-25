@@ -44,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="confirm writing to master.db (required)",
     )
 
+    history = sub.add_parser("history", help="show past syncs")
+    history.add_argument("--limit", type=int, default=20)
+    history.add_argument("--playlist", dest="playlist", default=None)
+
     wantlist = sub.add_parser("wantlist", help="export tracks you are missing")
     wantlist.add_argument("--out", dest="out")
     wantlist.add_argument(
@@ -107,6 +111,22 @@ def _dispatch(args, service: AppService) -> int:
         print(f"auto accept:    {config.auto_accept}")
         print(f"reject below:   {config.reject}")
         print(f"allow removals: {service.allow_removals()}")
+        return 0
+
+    if args.command == "history":
+        entries = service.history(playlist_id=args.playlist, limit=args.limit)
+        if not entries:
+            print("No syncs recorded yet.")
+            return 0
+        for entry in entries:
+            name = entry.playlist_name or entry.playlist_id
+            print(
+                f"{entry.synced_at}  {name}: +{entry.added} -{entry.removed}  "
+                f"{entry.coverage_percent}% matched ({entry.matched}/{entry.total})"
+            )
+        newest = entries[0]
+        if newest.backup_path:
+            print(f"\nmost recent backup: {newest.backup_path}")
         return 0
 
     if args.command == "playlists":

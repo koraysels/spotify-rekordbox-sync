@@ -401,3 +401,29 @@ li.empty {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.modal.wide {
+  width: 780px;
+}
+
+.table-wrap.history {
+  max-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.table-wrap.history th,
+.table-wrap.history td {
+  white-space: nowrap;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}

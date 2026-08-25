@@ -112,6 +112,25 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             ]
         }
 
+    def history_list(playlistId=None, limit=50, **_):
+        entries = service.history(playlist_id=playlistId, limit=int(limit))
+        return {
+            "entries": [
+                {
+                    "playlistId": entry.playlist_id,
+                    "playlistName": entry.playlist_name,
+                    "added": entry.added,
+                    "removed": entry.removed,
+                    "matched": entry.matched,
+                    "total": entry.total,
+                    "coveragePercent": entry.coverage_percent,
+                    "syncedAt": entry.synced_at,
+                    "backupPath": entry.backup_path,
+                }
+                for entry in entries
+            ]
+        }
+
     def review_decide(decisions=None, **_):
         return {"decided": service.decide_bulk(list(decisions or []))}
 
@@ -155,6 +174,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("sync.plan", sync_plan),
         ("sync.apply", sync_apply),
         ("review.decide", review_decide),
+        ("history.list", history_list),
         ("wantlist.get", wantlist_get),
         ("wantlist.export", wantlist_export),
     ):
