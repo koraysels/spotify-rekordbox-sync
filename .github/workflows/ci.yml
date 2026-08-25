@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  core:
+    name: Python core
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install core
+        run: |
+          uv venv core/.venv --python 3.12
+          uv pip install --python core/.venv/bin/python -e "core[dev]"
+
+      - name: Run tests
+        # Rekordbox-backed tests skip automatically when no master.db is present,
+        # so CI exercises the matcher, cache, planner, RPC and CLI.
+        run: core/.venv/bin/python -m pytest core/tests -v
+
+  ui:
+    name: TypeScript UI
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install
+        working-directory: ui
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ui
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: ui
+        run: npm run build

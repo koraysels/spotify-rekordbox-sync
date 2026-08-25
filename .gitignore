@@ -14,6 +14,9 @@ ui/dist/
 
 # Rust / Tauri
 target/
+ui/src-tauri/gen/
+# Frozen sidecar binaries are build artifacts, not source
+ui/src-tauri/binaries/
 
 # Never commit rekordbox databases or backups
 *.db
