@@ -4,6 +4,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import "./App.css";
 import { isTauri, rpc } from "./rpc";
+import { openSyncWindow } from "./syncWindow";
+import { serveRpcToOtherWindows } from "./bridge";
 import { revealPath } from "./reveal";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
@@ -16,8 +18,6 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
-import { FloatingWindow } from "./components/FloatingWindow";
-import { SyncView } from "./components/SyncView";
 import { WantlistBanner } from "./components/WantlistBanner";
 import {
   TrackTable,
@@ -57,9 +57,8 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
-  const [syncOpen, setSyncOpen] = useState(false);
   // Bumped after an Apply so the rekordbox column re-reads the database.
-  const [libraryVersion, setLibraryVersion] = useState(0);
+  const [, setLibraryVersion] = useState(0);
   const [applyState, setApplyState] = useState<ApplyState | null>(null);
   const [files, setFiles] = useState<Map<string, FileStatus>>(new Map());
   const [picking, setPicking] = useState<TrackPlan | null>(null);
@@ -96,6 +95,10 @@ export default function App() {
     },
     [refreshStatus],
   );
+
+  useEffect(() => {
+    void serveRpcToOtherWindows();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = rpc.onProgress((message) => setBusy(message));
@@ -470,7 +473,7 @@ export default function App() {
       )}
 
       <BottomBar
-        onOpenSync={() => setSyncOpen(true)}
+        onOpenSync={() => void openSyncWindow()}
         selectedCount={selected.size}
         coverage={coverage}
         hasPlan={plans.size > 0}
@@ -481,24 +484,6 @@ export default function App() {
         onExport={exportWantlist}
       />
 
-      {syncOpen && (
-        <FloatingWindow title="Sync" onClose={() => setSyncOpen(false)} width={940}>
-          <SyncView
-            playlists={playlists}
-            selected={selected}
-            plans={plans}
-            busy={busy !== null}
-            rekordboxRunning={Boolean(status?.rekordbox_running)}
-            hasPlan={plans.size > 0}
-            onToggle={togglePlaylist}
-            onSelectAll={() => persistSelection(new Set(playlists.map((p) => p.id)))}
-            onSelectNone={() => persistSelection(new Set())}
-            onPlan={planSync}
-            onApply={applySync}
-            refreshKey={libraryVersion}
-          />
-        </FloatingWindow>
-      )}
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}

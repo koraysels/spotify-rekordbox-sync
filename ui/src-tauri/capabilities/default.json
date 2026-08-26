@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "Permissions for the rbsync window: spawn the Python core, talk to it on stdio, and open the Spotify sign-in page.",
   "windows": [
-    "main"
+    "main",
+    "sync"
   ],
   "permissions": [
     "core:default",
@@ -29,6 +30,10 @@
           "sidecar": true
         }
       ]
-    }
+    },
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:event:default"
   ]
 }
