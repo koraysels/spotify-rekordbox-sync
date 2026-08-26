@@ -279,6 +279,11 @@ tbody td {
 .col-band {
   width: 92px;
 }
+.col-change {
+  width: 62px;
+  text-align: right;
+}
+
 .col-score {
   width: 60px;
   text-align: right;
@@ -416,6 +421,51 @@ li.empty {
 
 .modal.wide {
   width: 780px;
+}
+
+/* The candidate table carries nine columns of evidence; it needs the room, and
+   scrolls sideways rather than truncating the action button. */
+.modal.picker {
+  width: min(1040px, 94vw);
+}
+
+.modal.picker .table-wrap {
+  overflow-x: hidden;
+}
+
+/* Fixed layout so the long track column cannot push the action button out of
+   the modal; the name truncates instead, with the full text in a tooltip. */
+.modal.picker table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.modal.picker th:nth-child(1),
+.modal.picker td:nth-child(1) {
+  width: 38%;
+}
+
+.modal.picker th:nth-child(2),
+.modal.picker td:nth-child(2) {
+  width: 20%;
+}
+
+.modal.picker th:nth-child(3),
+.modal.picker td:nth-child(3),
+.modal.picker th:nth-child(4),
+.modal.picker td:nth-child(4),
+.modal.picker th:nth-child(5),
+.modal.picker td:nth-child(5) {
+  width: 9%;
+}
+
+.modal.picker th:nth-child(6),
+.modal.picker td:nth-child(6) {
+  width: 15%;
+}
+
+.modal.picker td:nth-child(6) button {
+  width: 100%;
 }
 
 .table-wrap.history {

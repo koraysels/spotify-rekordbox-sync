@@ -238,3 +238,32 @@ class TestWantlistDeduplication:
         b = sp("id-two", "Track Two", "Someone", 210_000)
         plan = plan_playlist(PLAYLIST, [a, b], index, cache)
         assert len(wantlist_text([plan]).splitlines()) == 2
+
+
+class TestChosenCandidateOverridesRanking:
+    def test_plan_uses_the_chosen_copy_not_the_top_scorer(self, cache):
+        # Two identical copies of one track: the matcher cannot tell them apart
+        # on score, so the user's choice has to be what decides it.
+        first = LocalTrack(id="copy-a", title="Versace", artist="Migos", length_seconds=195)
+        second = LocalTrack(id="copy-b", title="Versace", artist="Migos", length_seconds=195)
+        index = TrackIndex([first, second])
+        track = sp("s1", "Versace", "Migos", 195_000)
+
+        ranked = index.search(track)
+        runner_up = ranked[1].track.id
+        cache.remember_decision("s1", runner_up, accepted=True)
+
+        plan = plan_playlist(PLAYLIST, [track], index, cache)
+        assert plan.to_add == [runner_up]
+        assert plan.tracks[0].content_id == runner_up
+
+    def test_choosing_a_copy_survives_replanning(self, cache):
+        first = LocalTrack(id="copy-a", title="Versace", artist="Migos", length_seconds=195)
+        second = LocalTrack(id="copy-b", title="Versace", artist="Migos", length_seconds=195)
+        index = TrackIndex([first, second])
+        track = sp("s1", "Versace", "Migos", 195_000)
+        cache.remember_decision("s1", "copy-b", accepted=True)
+
+        for _ in range(3):
+            plan = plan_playlist(PLAYLIST, [track], index, cache)
+            assert plan.to_add == ["copy-b"]

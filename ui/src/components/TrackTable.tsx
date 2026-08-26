@@ -10,6 +10,7 @@ interface Props {
   selectedIds: Set<string>;
   onSelect: (ids: Set<string>) => void;
   onDecide: (tracks: TrackPlan[], accepted: boolean) => void;
+  onInspect: (row: TrackPlan) => void;
   lastClicked: string | null;
   onLastClicked: (id: string | null) => void;
 }
@@ -27,6 +28,7 @@ export function TrackTable({
   selectedIds,
   onSelect,
   onDecide,
+  onInspect,
   lastClicked,
   onLastClicked,
 }: Props) {
@@ -108,6 +110,7 @@ export function TrackTable({
               <th>Spotify</th>
               <th>Rekordbox match</th>
               <th className="col-score">score</th>
+              <th className="col-change"></th>
             </tr>
           </thead>
           <tbody>
@@ -139,12 +142,24 @@ export function TrackTable({
                     )}
                   </td>
                   <td className="col-score">{row.score ? row.score.toFixed(2) : "—"}</td>
+                  <td className="col-change">
+                    <button
+                      className="link"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onInspect(row);
+                      }}
+                      title="See every candidate and choose one"
+                    >
+                      change
+                    </button>
+                  </td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="empty">
+                <td colSpan={6} className="empty">
                   Nothing in this band.
                 </td>
               </tr>

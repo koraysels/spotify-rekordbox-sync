@@ -6,6 +6,7 @@ import "./App.css";
 import { rpc } from "./rpc";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
+import { CandidatePicker } from "./components/CandidatePicker";
 import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
@@ -40,6 +41,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [picking, setPicking] = useState<TrackPlan | null>(null);
 
   const [bandFilter, setBandFilter] = useState<BandFilter>("all");
   const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
@@ -167,6 +169,29 @@ export default function App() {
       setNotice(`Wantlist written to ${result.path}`);
     });
 
+  const replan = useCallback(async () => {
+    const plan = await rpc.call<SyncPlan>("sync.plan", { playlistIds: [...selected] });
+    const map = new Map<string, PlaylistPlan>();
+    plan.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
+    setPlans(map);
+    setCoverage(plan.coverage);
+  }, [selected]);
+
+  const chooseCandidate = (row: TrackPlan, contentId: string | null) =>
+    run(contentId ? "Saving match" : "Marking as missing", async () => {
+      await rpc.call("review.decide", {
+        decisions: [
+          {
+            spotify_id: row.track.id,
+            content_id: contentId ?? "",
+            accepted: Boolean(contentId),
+          },
+        ],
+      });
+      setPicking(null);
+      await replan();
+    });
+
   const decide = (tracks: TrackPlan[], accepted: boolean) =>
     run(accepted ? "Accepting matches" : "Rejecting matches", async () => {
       const decisions = tracks
@@ -179,11 +204,7 @@ export default function App() {
       if (decisions.length === 0) return;
       await rpc.call("review.decide", { decisions });
       // Re-plan so the preview reflects the decisions that were just made.
-      const plan = await rpc.call<SyncPlan>("sync.plan", { playlistIds: [...selected] });
-      const map = new Map<string, PlaylistPlan>();
-      plan.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
-      setPlans(map);
-      setCoverage(plan.coverage);
+      await replan();
       setRowSelection(new Set());
     });
 
@@ -247,6 +268,7 @@ export default function App() {
           selectedIds={rowSelection}
           onSelect={setRowSelection}
           onDecide={decide}
+          onInspect={setPicking}
           lastClicked={lastClicked}
           onLastClicked={setLastClicked}
         />
@@ -265,6 +287,15 @@ export default function App() {
       />
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
+
+      {picking && (
+        <CandidatePicker
+          row={picking}
+          onChoose={(contentId) => chooseCandidate(picking, contentId)}
+          onReject={() => chooseCandidate(picking, null)}
+          onClose={() => setPicking(null)}
+        />
+      )}
 
       {showSettings && settings && (
         <SettingsPanel

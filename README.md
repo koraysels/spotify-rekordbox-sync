@@ -105,6 +105,14 @@ leading track numbers, and diacritics.
 When several copies of the same track exist in your collection, the app prefers
 the analysed, highest-bitrate copy, and picks the same one every run.
 
+### Choosing a different copy
+
+The top-scoring candidate is not always the one you want — 82% of a real
+collection turns out to be duplicate rows, and remixes score close to their
+originals. **change** on any row opens every candidate the matcher considered,
+with its file, length, bitrate and score, and lets you pick one. That choice is
+remembered and overrides the ranking on every future sync.
+
 ## History and backups
 
 Every Apply is recorded: which playlist, how many tracks added and removed,
