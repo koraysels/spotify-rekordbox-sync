@@ -10,10 +10,16 @@ import { CandidatePicker } from "./components/CandidatePicker";
 import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
+import { RekordboxPanel } from "./components/RekordboxPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import { WantlistBanner } from "./components/WantlistBanner";
-import { TrackTable, type BandFilter, type BrowseState } from "./components/TrackTable";
+import {
+  TrackTable,
+  type BandFilter,
+  type BrowseState,
+  type FileStatus,
+} from "./components/TrackTable";
 import type {
   ApplyResult,
   CachedPlans,
@@ -44,6 +50,8 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [files, setFiles] = useState<Map<string, FileStatus>>(new Map());
   const [picking, setPicking] = useState<TrackPlan | null>(null);
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
   const [wantlist, setWantlist] = useState<
@@ -333,6 +341,25 @@ export default function App() {
     [plans, browse],
   );
 
+  useEffect(() => {
+    const contentIds = [...plans.values()]
+      .flatMap((entry) => entry.tracks)
+      .map((entry) => entry.contentId)
+      .filter((id): id is string => Boolean(id));
+    if (contentIds.length === 0) {
+      setFiles(new Map());
+      return;
+    }
+    void rpc
+      .call<{ files: Record<string, FileStatus> }>("tracks.verify", {
+        contentIds: [...new Set(contentIds)],
+      })
+      .then((result) => setFiles(new Map(Object.entries(result.files))))
+      .catch(() => {
+        // Verification is advisory; failing to check must not block the plan.
+      });
+  }, [plans]);
+
   const activePlan = useMemo(
     () => (activePlaylist ? plans.get(activePlaylist) ?? null : null),
     [activePlaylist, plans],
@@ -347,6 +374,7 @@ export default function App() {
         busy={busy}
         onSettings={() => setShowSettings(true)}
         onHistory={() => setShowHistory(true)}
+        onLibrary={() => setShowLibrary(true)}
       />
 
       {cloudWarning && (
@@ -407,6 +435,7 @@ export default function App() {
           lastClicked={lastClicked}
           onLastClicked={setLastClicked}
           browse={activePlaylist ? browse.get(activePlaylist) ?? null : null}
+          files={files}
         />
       </main>
       )}
@@ -423,6 +452,7 @@ export default function App() {
       />
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
+      {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
 
       {picking && (
         <CandidatePicker

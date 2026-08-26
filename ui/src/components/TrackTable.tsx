@@ -1,6 +1,16 @@
 import { useMemo, useState } from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
 import { copyText, searchQueryFor } from "../clipboard";
+import { isTauri } from "../rpc";
 import type { Band, PlaylistPlan, SpotifyTrack, TrackPlan } from "../types";
+
+export interface FileStatus {
+  exists: boolean;
+  status: "ok" | "missing" | "offline" | "unknown";
+  path: string;
+  volume: string;
+}
 
 export interface BrowseState {
   tracks: SpotifyTrack[];
@@ -22,6 +32,8 @@ interface Props {
   onLastClicked: (id: string | null) => void;
   /** Contents of the highlighted playlist when no plan has been made yet. */
   browse: BrowseState | null;
+  /** Per content id: whether the matched audio file is reachable right now. */
+  files: Map<string, FileStatus>;
 }
 
 const BAND_LABEL: Record<Band, string> = {
@@ -41,6 +53,7 @@ export function TrackTable({
   lastClicked,
   onLastClicked,
   browse,
+  files,
 }: Props) {
   const blocked = plan?.error ?? null;
 
@@ -220,7 +233,7 @@ export function TrackTable({
                     <input type="checkbox" readOnly checked={selectedIds.has(row.track.id)} />
                   </td>
                   <td className="col-band">
-                    <span className={`band ${row.band}`}>{BAND_LABEL[row.band]}</span>
+                    <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
                   </td>
                   <td className="col-spotify" title={row.track.display}>
                     {row.track.display}
@@ -240,16 +253,19 @@ export function TrackTable({
                     {row.band === "reject" ? (
                       <CopyActions track={row.track} />
                     ) : (
-                      <button
-                        className="chip"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onInspect(row);
-                        }}
-                        data-tip="See every candidate and choose one"
-                      >
-                        change
-                      </button>
+                      <span className="copy-actions">
+                        <RevealButton path={files.get(row.contentId ?? "")?.path ?? best?.folderPath ?? ""} />
+                        <button
+                          className="chip"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onInspect(row);
+                          }}
+                          data-tip="See every candidate and choose one"
+                        >
+                          change
+                        </button>
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -266,6 +282,62 @@ export function TrackTable({
         </table>
       </div>
     </section>
+  );
+}
+
+/**
+ * The band, unless the matched file cannot be played right now.
+ *
+ * An unplugged drive and a deleted file both mean "won't play", but they have
+ * completely different remedies, so they must not look the same.
+ */
+function FileAwareBand({ row, file }: { row: TrackPlan; file?: FileStatus }) {
+  if (file?.status === "offline") {
+    const drive = file.volume.replace("/Volumes/", "");
+    return (
+      <span className="band drive-offline" title={`On ${drive}, which is not connected. Reconnect the drive and this track plays.`}>
+        offline
+      </span>
+    );
+  }
+  if (file?.status === "missing") {
+    return (
+      <span className="band missing-file" title={`rekordbox points at ${file.path}, but nothing is there. The file was moved or deleted.`}>
+        no file
+      </span>
+    );
+  }
+  return <span className={`band ${row.band}`}>{BAND_LABEL[row.band]}</span>;
+}
+
+/** Opens the containing folder with the matched file selected. */
+function RevealButton({ path }: { path: string }) {
+  const [failed, setFailed] = useState(false);
+
+  const reveal = async (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (!isTauri() || !path) {
+      setFailed(true);
+      window.setTimeout(() => setFailed(false), 1800);
+      return;
+    }
+    try {
+      await revealItemInDir(path);
+    } catch {
+      setFailed(true);
+      window.setTimeout(() => setFailed(false), 1800);
+    }
+  };
+
+  return (
+    <button
+      className={failed ? "chip bad" : "chip"}
+      onClick={reveal}
+      disabled={!path}
+      data-tip={path ? `Show in Finder: ${path}` : "No file path recorded"}
+    >
+      {failed ? "failed" : "file"}
+    </button>
   );
 }
 

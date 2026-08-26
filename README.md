@@ -104,6 +104,36 @@ originals. **change** on any row opens every candidate the matcher considered,
 with its file, length, bitrate and score, and lets you pick one. That choice is
 remembered and overrides the ranking on every future sync.
 
+## Is the file actually there?
+
+rekordbox stores the path it imported a track from. If the file moved, was
+deleted, or lives on a drive you have not plugged in, rekordbox still shows the
+track — and it will not play. A synced playlist made of those is exactly the
+failure this tool exists to prevent.
+
+Every matched track is checked against disk, and the two causes are kept apart
+because they have different remedies:
+
+| Badge | Meaning | Fix |
+|---|---|---|
+| **offline** | The file is on a drive that is not connected | Plug the drive in |
+| **no file** | The drive is there, the file is not | Re-download or re-import it |
+
+**In rekordbox** in the toolbar shows the same thing for the whole collection —
+how many tracks would play right now, and exactly which drives to reconnect.
+
+Syncing works regardless: rekordbox stores the path, so tracks light up again
+when the drive comes back.
+
+## Seeing what landed in rekordbox
+
+**In rekordbox** also lists the playlists that currently exist inside
+rekordbox's `Spotify` folder, with their track counts, read straight from
+`master.db`. That answers "did it really land?" rather than "did we think it
+landed?".
+
+Every matched row has a **file** button that reveals the track in Finder.
+
 ## Plans are remembered
 
 Planning fetches every selected playlist from Spotify and matches each track

@@ -129,3 +129,20 @@ class TestCachedPlansApi:
     def test_wantlist_text_is_available_for_copying(self, server):
         result = call(server, "wantlist.get")["result"]
         assert "text" in result
+
+
+class TestFileAndLibraryApi:
+    def test_verify_with_no_ids_is_empty(self, server):
+        assert call(server, "tracks.verify", {"contentIds": []})["result"]["files"] == {}
+
+    def test_verify_reports_unknown_ids_as_absent(self, server, service):
+        from rbsync.matcher import TrackIndex
+
+        service._index = TrackIndex([])
+        result = call(server, "tracks.verify", {"contentIds": ["nope"]})["result"]["files"]
+        assert result["nope"]["exists"] is False
+
+    def test_rekordbox_playlists_without_a_database_is_an_error_not_a_crash(self, server):
+        response = call(server, "rekordbox.playlists")
+        assert "error" in response
+        assert response["error"]["code"] == -32000

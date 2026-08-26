@@ -38,6 +38,10 @@ SETTING_REJECT = "reject"
 SETTING_ALLOW_REMOVALS = "allow_removals"
 SETTING_ONLY_SYNCABLE = "only_syncable"
 
+# Where macOS mounts external drives. Paths beneath a directory here belong to a
+# volume that may simply not be plugged in.
+VOLUME_PREFIX = "/Volumes"
+
 
 @dataclass(slots=True)
 class ApplyResult:
@@ -359,6 +363,122 @@ class AppService:
     def history(self, playlist_id: str | None = None, limit: int = 50) -> list:
         """Past syncs, newest first."""
         return self.cache.get_history(playlist_id=playlist_id, limit=limit)
+
+    # --- file checks -------------------------------------------------------
+
+    def verify_files(self, content_ids: list[str]) -> dict[str, dict]:
+        """Check that matched rekordbox rows point at files that still exist.
+
+        rekordbox keeps the path it imported; if the file was moved or deleted
+        outside the app, the row survives and the track will not play. A synced
+        playlist made of those is exactly the failure this tool exists to avoid.
+        """
+        results: dict[str, dict] = {}
+        for content_id in content_ids:
+            track = self.index.get(content_id)
+            path = (track.folder_path if track else "") or ""
+            if not path:
+                results[content_id] = {
+                    "exists": False, "status": "unknown", "path": "", "size": 0, "volume": "",
+                }
+                continue
+
+            candidate = Path(path)
+            volume = self._volume_of(path)
+            if volume and not Path(volume).exists():
+                # The drive is not plugged in. Nothing is lost, so this must not
+                # be reported the same way as a deleted file.
+                results[content_id] = {
+                    "exists": False, "status": "offline", "path": str(candidate),
+                    "size": 0, "volume": volume,
+                }
+                continue
+
+            try:
+                stat = candidate.stat()
+                results[content_id] = {
+                    "exists": True, "status": "ok", "path": str(candidate),
+                    "size": stat.st_size, "volume": volume,
+                }
+            except OSError:
+                results[content_id] = {
+                    "exists": False, "status": "missing", "path": str(candidate),
+                    "size": 0, "volume": volume,
+                }
+        return results
+
+    @staticmethod
+    def _volume_of(path: str) -> str:
+        """The mount point a path belongs to, or empty for the internal disk."""
+        prefix = VOLUME_PREFIX.rstrip("/") + "/"
+        if not path.startswith(prefix):
+            return ""
+        remainder = path[len(prefix):]
+        name = remainder.split("/", 1)[0]
+        return f"{prefix}{name}" if name else ""
+
+    def library_health(self) -> dict:
+        """How much of the collection would actually play right now.
+
+        Separates "the drive is not plugged in" from "the file is gone", because
+        the first is fixed by reconnecting a drive and the second is not. The
+        per-volume breakdown names which drive to reconnect.
+        """
+        counts = {"ok": 0, "missing": 0, "offline": 0, "unknown": 0}
+        offline_volumes: dict[str, int] = {}
+        missing_volume_cache: dict[str, bool] = {}
+
+        for track in self.index.tracks:
+            path = track.folder_path or ""
+            if not path:
+                counts["unknown"] += 1
+                continue
+
+            volume = self._volume_of(path)
+            if volume:
+                mounted = missing_volume_cache.get(volume)
+                if mounted is None:
+                    mounted = Path(volume).exists()
+                    missing_volume_cache[volume] = mounted
+                if not mounted:
+                    counts["offline"] += 1
+                    offline_volumes[volume] = offline_volumes.get(volume, 0) + 1
+                    continue
+
+            counts["ok" if Path(path).exists() else "missing"] += 1
+
+        return {
+            **counts,
+            "total": len(self.index.tracks),
+            "volumes": [
+                {"volume": volume, "count": count}
+                for volume, count in sorted(
+                    offline_volumes.items(), key=lambda item: -item[1]
+                )
+            ],
+        }
+
+    def rekordbox_playlists(self) -> list[dict]:
+        """What is actually inside the rekordbox Spotify folder right now.
+
+        Read straight from master.db rather than from our own records, so it
+        shows what rekordbox will really open.
+        """
+        with RekordboxLibrary.open(self.db_path) as library:
+            folder = library.find_playlist(SPOTIFY_FOLDER, parent_id="root")
+            if folder is None:
+                return []
+            playlists = [
+                p for p in library.list_playlists() if str(p.parent_id) == str(folder.id)
+            ]
+            return [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "trackCount": len(library.playlist_content_ids(p.id)),
+                }
+                for p in sorted(playlists, key=lambda p: p.name.lower())
+            ]
 
     # --- review ------------------------------------------------------------
 

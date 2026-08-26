@@ -180,6 +180,18 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             ]
         }
 
+    def tracks_verify(contentIds=None, **_):
+        """Which matched files are actually still on disk."""
+        return {"files": service.verify_files(list(contentIds or []))}
+
+    def library_health(**_):
+        """Whole-collection file availability, split by cause."""
+        return service.library_health()
+
+    def rekordbox_playlists(**_):
+        """The playlists that currently exist inside rekordbox's Spotify folder."""
+        return {"playlists": service.rekordbox_playlists()}
+
     def review_decide(decisions=None, **_):
         return {"decided": service.decide_bulk(list(decisions or []))}
 
@@ -229,6 +241,9 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("plans.cached", plans_cached),
         ("sync.apply", sync_apply),
         ("review.decide", review_decide),
+        ("tracks.verify", tracks_verify),
+        ("rekordbox.playlists", rekordbox_playlists),
+        ("library.health", library_health),
         ("history.list", history_list),
         ("wantlist.get", wantlist_get),
         ("wantlist.export", wantlist_export),

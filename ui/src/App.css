@@ -285,7 +285,7 @@ tbody td {
   width: 92px;
 }
 .col-change {
-  width: 132px;
+  width: 152px;
   text-align: right;
   /* Tooltips are absolutely positioned inside this cell, and tbody cells clip
      their content by default. */
@@ -385,6 +385,40 @@ tbody td {
 .band.reject {
   color: var(--danger);
   border-color: rgba(224, 87, 74, 0.4);
+}
+
+/* Matched in rekordbox, but the audio file is gone from disk. */
+.band.missing-file {
+  color: #0d0f13;
+  background: var(--warn);
+  border-color: var(--warn);
+  font-weight: 600;
+}
+
+/* On a drive that simply is not plugged in — informational, not a problem. */
+.band.drive-offline {
+  color: #7FB2E5;
+  border-color: rgba(127, 178, 229, 0.45);
+}
+
+.health {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.health-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+.health-row .num {
+  font-variant-numeric: tabular-nums;
 }
 
 td.empty,
