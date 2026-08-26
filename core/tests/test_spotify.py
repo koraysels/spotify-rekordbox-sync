@@ -61,12 +61,12 @@ class TestAuthorizeUrl:
 class TestPlaylistPaging:
     def test_follows_next_until_exhausted(self):
         page1 = {
-            "items": [{"id": "p1", "name": "One", "tracks": {"total": 3},
+            "items": [{"id": "p1", "name": "One", "items": {"total": 3},
                        "owner": {"display_name": "koray"}, "snapshot_id": "s1"}],
             "next": "https://api.spotify.com/v1/me/playlists?offset=1",
         }
         page2 = {
-            "items": [{"id": "p2", "name": "Two", "tracks": {"total": 5},
+            "items": [{"id": "p2", "name": "Two", "items": {"total": 5},
                        "owner": {"display_name": "koray"}, "snapshot_id": "s2"}],
             "next": None,
         }
@@ -81,10 +81,41 @@ class TestPlaylistPaging:
         assert playlists[0].track_count == 3
 
 
+class TestPlaylistTrackCount:
+    """Spotify moved the playlist size from ``tracks.total`` to ``items.total``."""
+
+    def _count(self, playlist):
+        transport = FakeTransport({
+            "https://api.spotify.com/v1/me/playlists?limit=50": {
+                "items": [playlist], "next": None
+            }
+        })
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=transport)
+        return client.list_playlists()[0].track_count
+
+    def test_reads_items_total(self):
+        assert self._count({"id": "p", "name": "N", "items": {"total": 7}}) == 7
+
+    def test_falls_back_to_tracks_total(self):
+        assert self._count({"id": "p", "name": "N", "tracks": {"total": 4}}) == 4
+
+    def test_items_total_wins_when_both_present(self):
+        assert self._count(
+            {"id": "p", "name": "N", "items": {"total": 9}, "tracks": {"total": 4}}
+        ) == 9
+
+    def test_null_tracks_field_does_not_crash(self):
+        # The live API returns ``"tracks": null`` alongside the new items field.
+        assert self._count({"id": "p", "name": "N", "tracks": None, "items": {"total": 6}}) == 6
+
+    def test_missing_both_is_zero(self):
+        assert self._count({"id": "p", "name": "N"}) == 0
+
+
 class TestTrackParsing:
     def _client(self, items, next_url=None):
         transport = FakeTransport({
-            "https://api.spotify.com/v1/playlists/pl/tracks?limit=100": {
+            "https://api.spotify.com/v1/playlists/pl/items?limit=100": {
                 "items": items, "next": next_url
             }
         })
@@ -92,7 +123,7 @@ class TestTrackParsing:
 
     def test_parses_track_fields(self):
         client = self._client([{
-            "track": {
+            "item": {
                 "id": "t1", "name": "Versace", "duration_ms": 195000,
                 "artists": [{"name": "Migos"}], "album": {"name": "YRN"},
                 "external_ids": {"isrc": "USRC12345678"},
@@ -111,25 +142,41 @@ class TestTrackParsing:
 
     def test_skips_local_files(self):
         client = self._client([{
-            "track": {"id": "t1", "name": "Local", "duration_ms": 1000,
-                      "artists": [], "album": {"name": ""}, "type": "track", "is_local": True}
+            "item": {"id": "t1", "name": "Local", "duration_ms": 1000,
+                     "artists": [], "album": {"name": ""}, "type": "track", "is_local": True}
         }])
         assert client.playlist_tracks("pl") == []
 
+    def test_skips_entries_marked_local_at_entry_level(self):
+        client = self._client([{
+            "is_local": True,
+            "item": {"id": "t1", "name": "Local", "duration_ms": 1000,
+                     "artists": [], "album": {"name": ""}, "type": "track"}
+        }])
+        assert client.playlist_tracks("pl") == []
+
+    def test_still_accepts_the_legacy_track_key(self):
+        client = self._client([{
+            "track": {"id": "t1", "name": "Legacy", "duration_ms": 1000,
+                      "artists": [{"name": "A"}], "album": {"name": "B"},
+                      "type": "track", "is_local": False}
+        }])
+        assert client.playlist_tracks("pl")[0].name == "Legacy"
+
     def test_skips_podcast_episodes(self):
         client = self._client([{
-            "track": {"id": "e1", "name": "Episode", "duration_ms": 1000,
-                      "artists": [], "album": {"name": ""}, "type": "episode", "is_local": False}
+            "item": {"id": "e1", "name": "Episode", "duration_ms": 1000,
+                     "artists": [], "album": {"name": ""}, "type": "episode", "is_local": False}
         }])
         assert client.playlist_tracks("pl") == []
 
     def test_skips_null_tracks(self):
-        client = self._client([{"track": None}])
+        client = self._client([{"item": None}])
         assert client.playlist_tracks("pl") == []
 
     def test_missing_isrc_becomes_empty_string(self):
         client = self._client([{
-            "track": {"id": "t1", "name": "No ISRC", "duration_ms": 1000,
+            "item": {"id": "t1", "name": "No ISRC", "duration_ms": 1000,
                       "artists": [{"name": "A"}], "album": {"name": "B"},
                       "type": "track", "is_local": False}
         }])
@@ -137,7 +184,7 @@ class TestTrackParsing:
 
     def test_multiple_artists_preserved(self):
         client = self._client([{
-            "track": {"id": "t1", "name": "Collab", "duration_ms": 1000,
+            "item": {"id": "t1", "name": "Collab", "duration_ms": 1000,
                       "artists": [{"name": "A"}, {"name": "B"}],
                       "album": {"name": "C"}, "type": "track", "is_local": False}
         }])

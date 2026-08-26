@@ -44,32 +44,21 @@ tools. The app shows a warning about this but cannot detect it for you.
 
 ## Setup
 
-### 1. Sign in to Spotify
+### 1. Connect Spotify
 
-Press **Sign in with Spotify**. That is the whole setup — the app ships its own
-Spotify Client ID and uses PKCE, so there is no secret to paste and nothing to
-configure.
+You need a free Spotify Client ID — a one-time, three-minute setup, with
+step-by-step instructions in **[docs/SPOTIFY_SETUP.md](docs/SPOTIFY_SETUP.md)**.
 
-A Client ID is public information under PKCE (it appears in the authorize URL of
-every desktop and mobile app), which is why it can safely be bundled.
+Short version: create an app at <https://developer.spotify.com/dashboard>, add
+`http://127.0.0.1:8888/callback` as a Redirect URI, copy the Client ID into
+**Settings → Spotify**, then press **Sign in with Spotify**.
 
-If you would rather use your own Spotify app, put its Client ID in
-**Settings → Spotify** with `http://127.0.0.1:8888/callback` as a redirect URI.
-A Client ID you set always overrides the bundled one.
+A Client ID identifies the application, not you, and is not a secret — PKCE
+exists so desktop apps need no secret. You log in on Spotify's own page; the app
+never sees your password.
 
-#### The hard limit on sharing this with friends
-
-Spotify caps a Development Mode app at **5 authenticated users**, and each of
-them has to be added by email in the app owner's Developer Dashboard under
-*Users Management*. The app owner also needs Spotify Premium.
-
-Extended Quota Mode removes the cap, but as of 2026 Spotify only grants it to
-registered organizations with a launched service and **250,000+ monthly active
-users**. That is not attainable for a tool like this.
-
-So realistically: you plus four friends on the bundled app. Beyond that, each
-additional person must create their own free Spotify app (three minutes) and
-paste their own Client ID into Settings — that path has no user limit.
+Sharing with friends is capped at **5 users per Spotify app**, added by hand in
+the dashboard. Beyond that, each person makes their own app with the same steps.
 
 ### 2. Sync
 

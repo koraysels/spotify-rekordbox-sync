@@ -150,11 +150,15 @@ class SpotifyClient:
             for item in payload.get("items", []):
                 if not item:
                     continue
+                # Spotify moved the playlist size from ``tracks.total`` to
+                # ``items.total`` and now returns ``tracks: null``. Read the new
+                # field first and keep the old one as a fallback.
+                counts = item.get("items") or item.get("tracks") or {}
                 playlists.append(
                     SpotifyPlaylist(
                         id=item.get("id", ""),
                         name=item.get("name", "") or "",
-                        track_count=int((item.get("tracks") or {}).get("total", 0)),
+                        track_count=int(counts.get("total", 0) or 0),
                         owner=((item.get("owner") or {}).get("display_name") or ""),
                         snapshot_id=item.get("snapshot_id", "") or "",
                     )
@@ -163,8 +167,12 @@ class SpotifyClient:
         return playlists
 
     def playlist_tracks(self, playlist_id: str) -> list[SpotifyTrack]:
+        """Fetch a playlist's tracks.
+
+        Uses the ``/items`` endpoint: ``/tracks`` now answers 403 Forbidden.
+        """
         tracks: list[SpotifyTrack] = []
-        url = f"{API_BASE}/playlists/{playlist_id}/tracks?limit=100"
+        url = f"{API_BASE}/playlists/{playlist_id}/items?limit=100"
         while url:
             payload = self._transport.get(url)
             for item in payload.get("items", []):
@@ -184,10 +192,11 @@ class SpotifyClient:
         """
         if not item:
             return None
-        track = item.get("track")
+        # The entry wraps the record under "item"; older payloads used "track".
+        track = item.get("item") or item.get("track")
         if not track:
             return None
-        if track.get("is_local"):
+        if item.get("is_local") or track.get("is_local"):
             return None
         if track.get("type") not in (None, "track"):
             return None
