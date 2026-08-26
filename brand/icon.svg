@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    rbsync app icon.
+
+    A record that is also a sync arrow: the ring breaks at the top and its
+    leading end becomes an arrowhead, so the mark says "playlist comes round
+    into your library" in a single gesture.
+
+    Geometry is computed rather than eyeballed — the arc runs 300 degrees from
+    -60 to 240, and the arrowhead sits on the tangent at the leading end so the
+    two read as one stroke. Deliberately not Spotify green and not any Pioneer
+    mark: this is its own identity.
+  -->
+  <defs>
+    <linearGradient id="disc" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#FFC15E"/>
+      <stop offset="0.5" stop-color="#FF7A45"/>
+      <stop offset="1" stop-color="#EE3D6B"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#242D3A"/>
+      <stop offset="1" stop-color="#11161D"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="0.3" cy="0.24" r="0.8">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1024" height="1024" rx="228" fill="url(#plate)"/>
+  <rect width="1024" height="1024" rx="228" fill="url(#sheen)"/>
+
+  <!-- Grooves. Quiet at full size, invisible by 32px, which is the intent. -->
+  <g fill="none" stroke="#46536B" stroke-opacity="0.5">
+    <circle cx="512" cy="512" r="318" stroke-width="7"/>
+    <circle cx="512" cy="512" r="282" stroke-width="7"/>
+    <circle cx="512" cy="512" r="246" stroke-width="7"/>
+  </g>
+
+  <!-- The record edge as an open ring: 300 degrees, butt-capped so the
+       arrowhead can finish the stroke cleanly. -->
+  <path d="M 692 200.3 A 360 360 0 1 1 332 200.3"
+        fill="none" stroke="url(#disc)" stroke-width="104" stroke-linecap="butt"/>
+
+  <!-- Arrowhead on the tangent at the leading end (240 degrees). -->
+  <path d="M 401 158 L 349 281 L 268 148 Z" fill="#FFC15E"/>
+
+  <!-- Label and spindle. -->
+  <circle cx="512" cy="512" r="152" fill="url(#disc)"/>
+  <circle cx="512" cy="512" r="152" fill="url(#sheen)"/>
+  <circle cx="512" cy="512" r="46" fill="#11161D"/>
+</svg>

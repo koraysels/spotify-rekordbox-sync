@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <!--
+    Horizontal lockup: mark plus wordmark.
+
+    Transparent ground and a warm accent on both words, because README logos are
+    viewed on light and dark backgrounds and a single fixed text colour fails on
+    one of them.
+  -->
+  <defs>
+    <linearGradient id="disc" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#FFC15E"/>
+      <stop offset="0.5" stop-color="#FF7A45"/>
+      <stop offset="1" stop-color="#EE3D6B"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FF9A4D"/>
+      <stop offset="1" stop-color="#EE3D6B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark, scaled from the icon geometry (no plate: it sits on the page). -->
+  <g transform="translate(20 22) scale(0.25)">
+    <g fill="none" stroke="#8892A6" stroke-opacity="0.35">
+      <circle cx="512" cy="512" r="318" stroke-width="7"/>
+      <circle cx="512" cy="512" r="282" stroke-width="7"/>
+      <circle cx="512" cy="512" r="246" stroke-width="7"/>
+    </g>
+    <path d="M 692 200.3 A 360 360 0 1 1 332 200.3"
+          fill="none" stroke="url(#disc)" stroke-width="104" stroke-linecap="butt"/>
+    <path d="M 401 158 L 349 281 L 268 148 Z" fill="#FFC15E"/>
+    <circle cx="512" cy="512" r="152" fill="url(#disc)"/>
+    <circle cx="512" cy="512" r="46" fill="none"/>
+  </g>
+
+  <text x="310" y="152"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="118" font-weight="700" letter-spacing="-3"
+        fill="url(#word)">rbsync</text>
+  <text x="313" y="212"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="40" font-weight="400" letter-spacing="0.5"
+        fill="#8892A6">Spotify playlists into rekordbox</text>
+</svg>

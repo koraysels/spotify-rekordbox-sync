@@ -1,3 +1,5 @@
+<img src="brand/logo.png" alt="rbsync" width="480">
+
 # Spotify → Rekordbox Sync
 
 Recreate your Spotify playlists inside rekordbox, filled with the tracks you
