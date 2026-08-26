@@ -267,3 +267,35 @@ class TestChosenCandidateOverridesRanking:
         for _ in range(3):
             plan = plan_playlist(PLAYLIST, [track], index, cache)
             assert plan.to_add == ["copy-b"]
+
+
+class TestWantlistAttribution:
+    def test_a_track_missing_in_several_playlists_names_them_all(self, index, cache):
+        track = sp("m1", "Ghost Track", "Nobody", 200_000)
+        a = plan_playlist(SpotifyPlaylist(id="pl1", name="Warm Up", track_count=1),
+                          [track], index, cache)
+        b = plan_playlist(SpotifyPlaylist(id="pl2", name="Peak Time", track_count=1),
+                          [track], index, cache)
+        rows = wantlist_rows([a, b], deduplicate=True)
+        assert len(rows) == 1
+        assert rows[0]["playlist"] == "Warm Up, Peak Time"
+
+    def test_a_playlist_is_not_named_twice(self, index, cache):
+        track = sp("m1", "Ghost Track", "Nobody", 200_000)
+        same = sp("m2", "Ghost Track", "Nobody", 200_000)
+        plan = plan_playlist(PLAYLIST, [track, same], index, cache)
+        rows = wantlist_rows([plan], deduplicate=True)
+        assert rows[0]["playlist"] == "Bangers"
+
+    def test_single_playlist_attribution_is_unchanged(self, index, cache):
+        plan = plan_playlist(PLAYLIST, [sp("m1", "Ghost", "Nobody", 200_000)], index, cache)
+        assert wantlist_rows([plan], deduplicate=True)[0]["playlist"] == "Bangers"
+
+    def test_without_dedup_each_playlist_keeps_its_own_row(self, index, cache):
+        track = sp("m1", "Ghost Track", "Nobody", 200_000)
+        a = plan_playlist(SpotifyPlaylist(id="pl1", name="Warm Up", track_count=1),
+                          [track], index, cache)
+        b = plan_playlist(SpotifyPlaylist(id="pl2", name="Peak Time", track_count=1),
+                          [track], index, cache)
+        rows = wantlist_rows([a, b], deduplicate=False)
+        assert [r["playlist"] for r in rows] == ["Warm Up", "Peak Time"]

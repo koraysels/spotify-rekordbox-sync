@@ -322,6 +322,26 @@ class Cache:
             self._db.execute("DELETE FROM plans")
             self._db.commit()
 
+    # --- playlist list -----------------------------------------------------
+
+    def save_playlists(self, payload: list[dict]) -> None:
+        """Remember the playlist list purely so the UI can paint immediately.
+
+        This is never the basis for a sync: a live fetch always follows and
+        replaces it.
+        """
+        self.set_setting("playlists_cache", json.dumps(payload))
+
+    def get_playlists(self) -> list[dict]:
+        raw = self.get_setting("playlists_cache", "")
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return []
+        return data if isinstance(data, list) else []
+
     # --- settings ----------------------------------------------------------
 
     def set_setting(self, key: str, value: str) -> None:

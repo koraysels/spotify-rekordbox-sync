@@ -99,6 +99,21 @@ export default function App() {
     [run],
   );
 
+  // Paint the sidebar from the last known list, then let the live fetch above
+  // replace it. Purely a first paint: nothing is synced from this.
+  useEffect(() => {
+    if (!status?.authenticated || playlists.length > 0) return;
+    void rpc
+      .call<{ playlists: Playlist[] }>("playlists.cached")
+      .then((result) => {
+        if (result.playlists.length === 0) return;
+        setPlaylists((current) => (current.length === 0 ? result.playlists : current));
+      })
+      .catch(() => {
+        // No cached list is a normal first run.
+      });
+  }, [status?.authenticated, playlists.length]);
+
   useEffect(() => {
     if (status?.authenticated && playlists.length === 0) void loadPlaylists();
   }, [status?.authenticated, playlists.length, loadPlaylists]);

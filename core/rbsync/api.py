@@ -85,6 +85,20 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             ]
         }
 
+    def playlists_cached(**_):
+        """The last known playlist list, with no network access.
+
+        Used to paint the sidebar on launch; the UI follows it with a live
+        playlists.list and replaces the result.
+        """
+        selected = set(service.cache.get_selected_playlists())
+        return {
+            "playlists": [
+                {**playlist_to_dict(p), "selected": p.id in selected}
+                for p in service.cached_playlists()
+            ]
+        }
+
     def playlists_set_selected(playlistIds=None, **_):
         ids = list(playlistIds or [])
         service.cache.set_selected_playlists(ids)
@@ -208,6 +222,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("auth.clear", auth_clear),
         ("library.load", library_load),
         ("playlists.list", playlists_list),
+        ("playlists.cached", playlists_cached),
         ("playlists.setSelected", playlists_set_selected),
         ("playlists.tracks", playlists_tracks),
         ("sync.plan", sync_plan),

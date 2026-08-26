@@ -143,19 +143,50 @@ class AppService:
             self.tokens.save(tokens)
         return SpotifyClient(tokens)
 
+    @staticmethod
+    def _playlist_to_json(playlist: SpotifyPlaylist) -> dict:
+        return {
+            "id": playlist.id,
+            "name": playlist.name,
+            "track_count": playlist.track_count,
+            "owner": playlist.owner,
+            "snapshot_id": playlist.snapshot_id,
+            "owner_id": playlist.owner_id,
+            "collaborative": playlist.collaborative,
+        }
+
+    @staticmethod
+    def _playlist_from_json(data: dict) -> SpotifyPlaylist:
+        return SpotifyPlaylist(
+            id=data.get("id", ""),
+            name=data.get("name", ""),
+            track_count=int(data.get("track_count") or 0),
+            owner=data.get("owner", ""),
+            snapshot_id=data.get("snapshot_id", ""),
+            owner_id=data.get("owner_id", ""),
+            collaborative=bool(data.get("collaborative")),
+        )
+
+    def cached_playlists(self) -> list[SpotifyPlaylist]:
+        """The last known playlist list, for painting the UI before the fetch."""
+        return [self._playlist_from_json(item) for item in self.cache.get_playlists()]
+
     def list_playlists(self) -> list[SpotifyPlaylist]:
         client = self.spotify()
         try:
             playlists = client.list_playlists()
             if not self.only_syncable():
+                self.cache.save_playlists([self._playlist_to_json(p) for p in playlists])
                 return playlists
             me = client.current_user_id()
             # Collaborative playlists are readable even when owned by someone
             # else, so filtering on ownership alone would hide working ones.
-            return [
+            visible = [
                 p for p in playlists
                 if p.collaborative or not p.owner_id or not me or p.owner_id == me
             ]
+            self.cache.save_playlists([self._playlist_to_json(p) for p in visible])
+            return visible
         finally:
             client.close()
 

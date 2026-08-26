@@ -178,7 +178,7 @@ def wantlist_rows(plans: list[PlaylistPlan], deduplicate: bool = False) -> list[
     playlist finally matches the Spotify one.
     """
     rows: list[dict] = []
-    seen: set[str] = set()
+    seen: dict[str, dict] = {}
     for plan in plans:
         for track_plan in plan.tracks:
             if track_plan.band is not Band.REJECT:
@@ -190,11 +190,15 @@ def wantlist_rows(plans: list[PlaylistPlan], deduplicate: bool = False) -> list[
                 # releases, and the wantlist is a shopping list, not an index.
                 artists = ",".join(sorted(normalize_artist(a) for a in track.artists))
                 key = f"{normalize_title(track.name)}|{artists}"
-                if key in seen:
+                existing = seen.get(key)
+                if existing is not None:
+                    # One row per record, but keep every playlist that wants it,
+                    # so the list still says where each track is needed.
+                    names = existing["playlist"].split(", ")
+                    if plan.playlist.name not in names:
+                        existing["playlist"] = ", ".join([*names, plan.playlist.name])
                     continue
-                seen.add(key)
-            rows.append(
-                {
+            row = {
                     "playlist": plan.playlist.name,
                     "artist": ", ".join(track.artists),
                     "title": track.name,
@@ -202,8 +206,11 @@ def wantlist_rows(plans: list[PlaylistPlan], deduplicate: bool = False) -> list[
                     "duration_seconds": round(track.duration_seconds, 1),
                     "isrc": track.isrc,
                     "url": track.url,
-                }
-            )
+            }
+            if deduplicate:
+                seen[f"{normalize_title(track.name)}|" +
+                    ",".join(sorted(normalize_artist(a) for a in track.artists))] = row
+            rows.append(row)
     return rows
 
 
