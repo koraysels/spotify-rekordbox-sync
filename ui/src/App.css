@@ -1099,3 +1099,73 @@ button.big {
   color: var(--muted);
   margin-left: 8px;
 }
+
+.syncrow.tree.folder {
+  cursor: pointer;
+}
+
+.syncrow.tree.folder:hover {
+  background: var(--panel-2);
+}
+
+.twisty {
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.twisty.open {
+  transform: rotate(90deg);
+}
+
+.syncpane-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.counts {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.count {
+  font-weight: 600;
+}
+
+.count.ok {
+  color: var(--accent);
+}
+
+.count.review {
+  color: var(--review);
+}
+
+.count.bad {
+  color: var(--danger);
+}
+
+.count.total {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.legend-key {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.legend-key .count {
+  font-weight: 600;
+}

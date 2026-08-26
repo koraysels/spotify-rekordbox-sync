@@ -156,6 +156,10 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
                     "added": r.added,
                     "removed": r.removed,
                     "backupPath": r.backup_path,
+                    "matched": r.matched,
+                    "review": r.review,
+                    "missing": r.missing,
+                    "total": r.total,
                 }
                 for r in results
             ]

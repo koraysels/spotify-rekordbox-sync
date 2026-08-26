@@ -62,6 +62,12 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                 <span>Playlists written</span>
                 <span className="num">{state.results.length}</span>
               </div>
+              {added === 0 && state.results.length > 0 && (
+                <p className="hint">
+                  Nothing new to add — rekordbox already had every matched track from
+                  these playlists.
+                </p>
+              )}
             </div>
 
             {state.results.length > 0 && (
@@ -72,6 +78,8 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                       <th>playlist</th>
                       <th className="num">added</th>
                       <th className="num">removed</th>
+                      <th className="num">in rekordbox</th>
+                      <th className="num">missing</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -80,6 +88,19 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                         <td title={entry.playlistName}>{entry.playlistName}</td>
                         <td className="num">{entry.added || "—"}</td>
                         <td className="num">{entry.removed || "—"}</td>
+                        <td className="num">
+                          <span className="count ok">{entry.matched}</span>
+                          <span className="count total"> / {entry.total}</span>
+                        </td>
+                        <td className="num">
+                          {entry.missing ? (
+                            <span className="count bad" title="tracks you do not own — on the wantlist">
+                              {entry.missing}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

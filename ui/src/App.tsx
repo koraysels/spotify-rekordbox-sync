@@ -279,6 +279,9 @@ export default function App() {
       });
     } finally {
       stopProgress();
+      // Progress events set busy but nothing clears it, which leaves the
+      // status bar spinning after the work has finished.
+      setBusy(null);
       void refreshStatus();
     }
   };

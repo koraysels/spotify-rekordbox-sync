@@ -14,10 +14,11 @@ interface RbNode {
 
 interface FlatNode extends RbNode {
   depth: number;
+  hasChildren: boolean;
 }
 
-/** Flatten the tree into rows, so it renders exactly as rekordbox shows it. */
-function flatten(nodes: RbNode[]): FlatNode[] {
+/** Flatten the tree into rows, skipping anything inside a collapsed folder. */
+function flatten(nodes: RbNode[], collapsed: Set<string>): FlatNode[] {
   const byParent = new Map<string, RbNode[]>();
   for (const node of nodes) {
     const siblings = byParent.get(node.parentId) ?? [];
@@ -34,12 +35,31 @@ function flatten(nodes: RbNode[]): FlatNode[] {
   const out: FlatNode[] = [];
   const walk = (parentId: string, depth: number) => {
     for (const node of byParent.get(parentId) ?? []) {
-      out.push({ ...node, depth });
-      if (node.isFolder) walk(node.id, depth + 1);
+      out.push({ ...node, depth, hasChildren: (byParent.get(node.id) ?? []).length > 0 });
+      if (node.isFolder && !collapsed.has(node.id)) walk(node.id, depth + 1);
     }
   };
   walk("root", 0);
   return out;
+}
+
+const COLLAPSED_KEY = "rbsync.collapsedFolders";
+
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(ids: Set<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Remembering which folders were open is a convenience, not a requirement.
+  }
 }
 
 interface Props {
@@ -80,6 +100,17 @@ export function SyncView({
 }: Props) {
   const [rbNodes, setRbNodes] = useState<RbNode[] | null>(null);
   const [rbError, setRbError] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
+
+  const toggleFolder = (id: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      saveCollapsed(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     setRbError(null);
@@ -92,7 +123,7 @@ export function SyncView({
       });
   }, [refreshKey]);
 
-  const rows = flatten(rbNodes ?? []);
+  const rows = flatten(rbNodes ?? [], collapsed);
   const spotifyFolder = (rbNodes ?? []).find((n) => n.isFolder && n.name === "Spotify");
   const chosen = playlists.filter((p) => selected.has(p.id));
   const existingNames = new Set(
@@ -122,6 +153,16 @@ export function SyncView({
             </button>
           </span>
         </header>
+        {/* The two columns count different things, and without saying so the
+            numbers look like a discrepancy rather than the coverage. */}
+        <div className="syncpane-legend">
+          <span>playlist</span>
+          <span className="legend-key">
+            <span className="count ok">matched</span>
+            <span className="count review">review</span>
+            <span className="count bad">missing</span>
+          </span>
+        </div>
         <ul className="synclist">
           {playlists.map((playlist) => {
             const plan = plans.get(playlist.id);
@@ -142,12 +183,41 @@ export function SyncView({
                 </span>
                 <span className="syncrow-meta">
                   {plan ? (
-                    <>
-                      <span className="pct">{plan.coverage.percent}%</span>
-                      <span className="of">{playlist.trackCount}</span>
-                    </>
+                    // Split the counts by outcome: one number cannot say
+                    // "found 5, still need 6" and that is the thing you act on.
+                    <span className="counts">
+                      <span
+                        className="count ok"
+                        title={`${plan.coverage.matched} matched in your collection`}
+                      >
+                        {plan.coverage.matched}
+                      </span>
+                      {plan.coverage.review > 0 && (
+                        <span
+                          className="count review"
+                          title={`${plan.coverage.review} need a decision — open Tracks and filter review`}
+                        >
+                          {plan.coverage.review}
+                        </span>
+                      )}
+                      {plan.coverage.missing > 0 && (
+                        <span
+                          className="count bad"
+                          title={`${plan.coverage.missing} you do not own — on the wantlist`}
+                        >
+                          {plan.coverage.missing}
+                        </span>
+                      )}
+                      <span className="count total" title="tracks in the Spotify playlist">
+                        / {plan.coverage.total}
+                      </span>
+                    </span>
                   ) : (
-                    <span className="of">{playlist.trackCount}</span>
+                    <span className="counts">
+                      <span className="count total" title="tracks in the Spotify playlist">
+                        {playlist.trackCount}
+                      </span>
+                    </span>
                   )}
                 </span>
               </li>
@@ -212,6 +282,10 @@ export function SyncView({
             {rbNodes ? `${rbNodes.length} playlists` : "your library"}
           </span>
         </header>
+        <div className="syncpane-legend">
+          <span>playlist</span>
+          <span>tracks in rekordbox</span>
+        </div>
         <ul className="synclist">
           {rbNodes === null && (
             <li className="playlists-loading">
@@ -222,24 +296,37 @@ export function SyncView({
           {rows.map((node) => (
             <li
               key={node.id}
-              className={
-                node.id === spotifyFolder?.id ? "syncrow tree spotify-folder" : "syncrow tree"
-              }
+              className={[
+                "syncrow tree",
+                node.id === spotifyFolder?.id ? "spotify-folder" : "",
+                node.isFolder ? "folder" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               style={{ paddingLeft: 14 + node.depth * 16 }}
+              onClick={node.isFolder ? () => toggleFolder(node.id) : undefined}
+              title={node.isFolder ? "Click to collapse or expand" : node.name}
             >
-              <span className="syncrow-name" title={node.name}>
-                {node.isFolder ? "▸ " : ""}
+              <span className="syncrow-name">
+                {node.isFolder && (
+                  <span className={collapsed.has(node.id) ? "twisty" : "twisty open"}>▸</span>
+                )}
                 {node.name}
               </span>
               <span className="syncrow-meta">
-                {node.isFolder ? "" : node.trackCount}
+                {node.isFolder
+                  ? collapsed.has(node.id) && node.hasChildren
+                    ? "…"
+                    : ""
+                  : node.trackCount}
               </span>
             </li>
           ))}
 
           {/* Selected playlists rekordbox does not have yet, shown where they
               will appear: inside the Spotify folder. */}
-          {pending.map((playlist) => (
+          {!(spotifyFolder && collapsed.has(spotifyFolder.id)) &&
+            pending.map((playlist) => (
             <li
               key={`pending-${playlist.id}`}
               className="syncrow tree ghost"
@@ -250,7 +337,7 @@ export function SyncView({
               </span>
               <span className="syncrow-meta">new</span>
             </li>
-          ))}
+            ))}
 
           {rbNodes?.length === 0 && !rbError && (
             <li className="empty">No playlists in rekordbox yet.</li>

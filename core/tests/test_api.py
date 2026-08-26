@@ -146,3 +146,23 @@ class TestFileAndLibraryApi:
         response = call(server, "rekordbox.playlists")
         assert "error" in response
         assert response["error"]["code"] == -32000
+
+
+class TestApplyResultCarriesCoverage:
+    def test_result_fields_include_what_is_missing(self):
+        from rbsync.app import ApplyResult
+
+        result = ApplyResult(
+            playlist_id="p", playlist_name="N", added=3, removed=0,
+            backup_path="/tmp/b.db", matched=3, review=1, missing=2, total=6,
+        )
+        assert result.missing == 2
+        assert result.total == 6
+
+    def test_defaults_are_zero_for_older_callers(self):
+        from rbsync.app import ApplyResult
+
+        result = ApplyResult(
+            playlist_id="p", playlist_name="N", added=0, removed=0, backup_path=""
+        )
+        assert (result.matched, result.review, result.missing, result.total) == (0, 0, 0, 0)

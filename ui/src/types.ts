@@ -90,6 +90,10 @@ export interface ApplyResult {
   added: number;
   removed: number;
   backupPath: string;
+  matched: number;
+  review: number;
+  missing: number;
+  total: number;
 }
 
 export interface Decision {

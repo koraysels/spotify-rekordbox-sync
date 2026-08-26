@@ -86,6 +86,7 @@ export default function SyncWindow() {
 
   const apply = async () => {
     setApplyState({ phase: "running", message: "Checking that rekordbox is closed", results: [], error: null });
+    setBusy("Writing to rekordbox");
     try {
       const result = await callViaMainWindow<{ results: ApplyResult[] }>("sync.apply");
       setApplyState({ phase: "done", message: "", results: result.results, error: null });
@@ -99,6 +100,10 @@ export default function SyncWindow() {
         results: [],
         error: cause instanceof Error ? cause.message : String(cause),
       });
+    } finally {
+      // Progress events only ever set the message; without this the button
+      // stays on "Working…" forever once the last event has arrived.
+      setBusy(null);
     }
   };
 

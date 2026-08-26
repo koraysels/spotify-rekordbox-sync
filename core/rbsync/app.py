@@ -56,6 +56,12 @@ class ApplyResult:
     added: int
     removed: int
     backup_path: str
+    # Carried through so the result can say what did not make it, not only what
+    # did — "added 0" alone reads as failure when it means "already in sync".
+    matched: int = 0
+    review: int = 0
+    missing: int = 0
+    total: int = 0
 
 
 class AppService:
@@ -340,6 +346,7 @@ class AppService:
                     target = library.ensure_playlist(name, folder.id)
                     added = library.add_tracks(target.id, playlist_plan.to_add)
                     removed = library.remove_tracks(target.id, playlist_plan.to_remove)
+                    coverage = playlist_plan.coverage
                     results.append(
                         ApplyResult(
                             playlist_id=playlist_plan.playlist.id,
@@ -347,6 +354,10 @@ class AppService:
                             added=added,
                             removed=removed,
                             backup_path=str(backup),
+                            matched=coverage.matched,
+                            review=coverage.review,
+                            missing=coverage.missing,
+                            total=coverage.total,
                         )
                     )
 
