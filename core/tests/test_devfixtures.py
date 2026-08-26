@@ -63,3 +63,25 @@ class TestIndexTracksProperty:
     def test_exposes_indexed_tracks(self):
         tracks = [LocalTrack(id="1", title="A", artist="B", length_seconds=100)]
         assert TrackIndex(tracks).tracks == tracks
+
+
+class TestFixtureMatchesRealClient:
+    """The demo client stands in for SpotifyClient, so it must expose the same API.
+
+    A method added to the real client but not the fake breaks demo mode at
+    runtime instead of in the tests.
+    """
+
+    def test_implements_every_method_the_app_calls(self, service):
+        from rbsync.spotify import SpotifyClient
+
+        fake = devfixtures.build_fake_client(service)
+        used_by_app = ("list_playlists", "playlist_tracks", "current_user_id", "close")
+        for name in used_by_app:
+            assert hasattr(SpotifyClient, name), f"real client lost {name}"
+            assert hasattr(fake, name), f"demo client is missing {name}"
+
+    def test_demo_playlists_are_owned_by_the_demo_user(self, service):
+        fake = devfixtures.build_fake_client(service)
+        me = fake.current_user_id()
+        assert all(p.owner_id == me for p in fake.list_playlists())

@@ -280,8 +280,18 @@ tbody td {
   width: 92px;
 }
 .col-change {
-  width: 62px;
+  width: 96px;
   text-align: right;
+}
+
+.copy-actions {
+  display: inline-flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.copy-actions button {
+  padding: 2px 3px;
 }
 
 .col-score {
@@ -536,4 +546,18 @@ button.big {
 .blocked p {
   color: var(--muted);
   line-height: 1.55;
+}
+
+.col-num {
+  width: 42px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.browse-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }

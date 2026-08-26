@@ -9,6 +9,7 @@
     "core:default",
     "core:window:allow-start-dragging",
     "opener:default",
+    "clipboard-manager:allow-write-text",
     "shell:allow-stdin-write",
     {
       "identifier": "shell:allow-spawn",

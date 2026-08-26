@@ -30,6 +30,9 @@ UNOWNED = [
 ]
 
 
+DEMO_USER_ID = "demo-user"
+
+
 class FakeSpotifyClient:
     def __init__(self, playlists, tracks):
         self._playlists = playlists
@@ -37,6 +40,9 @@ class FakeSpotifyClient:
 
     def list_playlists(self):
         return list(self._playlists)
+
+    def current_user_id(self) -> str:
+        return DEMO_USER_ID
 
     def playlist_tracks(self, playlist_id):
         return list(self._tracks.get(playlist_id, []))
@@ -93,7 +99,10 @@ def build_fake_client(service) -> FakeSpotifyClient:
         rng.shuffle(entries)
         tracks[playlist_id] = entries
         playlists.append(
-            SpotifyPlaylist(id=playlist_id, name=name, track_count=len(entries), owner="demo")
+            SpotifyPlaylist(
+                id=playlist_id, name=name, track_count=len(entries),
+                owner="demo", owner_id=DEMO_USER_ID,
+            )
         )
     return FakeSpotifyClient(playlists, tracks)
 

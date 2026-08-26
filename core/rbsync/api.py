@@ -6,8 +6,9 @@ from pathlib import Path
 
 from . import paths
 from .app import AppService
+from .spotify import PlaylistAccessDenied
 from .rpc import RpcServer
-from .serialize import playlist_to_dict, sync_plan_to_dict
+from .serialize import playlist_to_dict, sync_plan_to_dict, track_to_dict
 from .spotify import Tokens, build_authorize_url, exchange_code, make_verifier
 from .sync import wantlist_rows
 
@@ -88,6 +89,22 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ids = list(playlistIds or [])
         service.cache.set_selected_playlists(ids)
         return {"selected": ids}
+
+    def playlists_tracks(playlistId=None, **_):
+        """A playlist's Spotify contents, with no matching involved.
+
+        Lets the user look inside a playlist before committing to a sync.
+        """
+        if not playlistId:
+            raise RuntimeError("playlistId is required")
+        client = service.spotify()
+        try:
+            tracks = client.playlist_tracks(playlistId)
+        except PlaylistAccessDenied as exc:
+            return {"tracks": [], "error": str(exc)}
+        finally:
+            client.close()
+        return {"tracks": [track_to_dict(t) for t in tracks], "error": None}
 
     def sync_plan(playlistIds=None, **_):
         ids = list(playlistIds or service.cache.get_selected_playlists())
@@ -175,6 +192,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("library.load", library_load),
         ("playlists.list", playlists_list),
         ("playlists.setSelected", playlists_set_selected),
+        ("playlists.tracks", playlists_tracks),
         ("sync.plan", sync_plan),
         ("sync.apply", sync_apply),
         ("review.decide", review_decide),

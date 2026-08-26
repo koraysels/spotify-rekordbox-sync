@@ -1,5 +1,12 @@
-import { useMemo } from "react";
-import type { Band, PlaylistPlan, TrackPlan } from "../types";
+import { useMemo, useState } from "react";
+import { copyText, searchQueryFor } from "../clipboard";
+import type { Band, PlaylistPlan, SpotifyTrack, TrackPlan } from "../types";
+
+export interface BrowseState {
+  tracks: SpotifyTrack[];
+  error: string | null;
+  loading: boolean;
+}
 
 export type BandFilter = "all" | Band;
 
@@ -13,6 +20,8 @@ interface Props {
   onInspect: (row: TrackPlan) => void;
   lastClicked: string | null;
   onLastClicked: (id: string | null) => void;
+  /** Contents of the highlighted playlist when no plan has been made yet. */
+  browse: BrowseState | null;
 }
 
 const BAND_LABEL: Record<Band, string> = {
@@ -31,6 +40,7 @@ export function TrackTable({
   onInspect,
   lastClicked,
   onLastClicked,
+  browse,
 }: Props) {
   const blocked = plan?.error ?? null;
 
@@ -40,9 +50,75 @@ export function TrackTable({
   }, [plan, filter]);
 
   if (!plan) {
+    // Browsing: show what is in the playlist on Spotify, before any matching.
+    if (browse) {
+      if (browse.loading) {
+        return (
+          <section className="tracks empty-state">
+            <p>Loading playlist…</p>
+          </section>
+        );
+      }
+      if (browse.error) {
+        return (
+          <section className="tracks empty-state">
+            <div className="blocked">
+              <h3>Spotify won't share this playlist</h3>
+              <p>{browse.error}</p>
+            </div>
+          </section>
+        );
+      }
+      return (
+        <section className="tracks">
+          <div className="tracks-head">
+            <div className="filters">
+              <span className="browse-label">
+                {browse.tracks.length} track{browse.tracks.length === 1 ? "" : "s"} on Spotify
+              </span>
+            </div>
+            <div className="bulk">
+              <span className="muted">Press Plan sync to match these against rekordbox.</span>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th className="col-num">#</th>
+                  <th>Spotify</th>
+                  <th>album</th>
+                  <th className="col-score">length</th>
+                </tr>
+              </thead>
+              <tbody>
+                {browse.tracks.map((track, index) => (
+                  <tr key={`${track.id}-${index}`}>
+                    <td className="col-num">{index + 1}</td>
+                    <td title={track.display}>{track.display}</td>
+                    <td className="muted" title={track.album}>
+                      {track.album}
+                    </td>
+                    <td className="col-score">{formatMs(track.durationMs)}</td>
+                  </tr>
+                ))}
+                {browse.tracks.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="empty">
+                      This playlist is empty.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="tracks empty-state">
-        <p>Select playlists on the left, then press Plan sync.</p>
+        <p>Select a playlist to see what's in it, then press Plan sync.</p>
       </section>
     );
   }
@@ -161,16 +237,20 @@ export function TrackTable({
                   </td>
                   <td className="col-score">{row.score ? row.score.toFixed(2) : "—"}</td>
                   <td className="col-change">
-                    <button
-                      className="link"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onInspect(row);
-                      }}
-                      title="See every candidate and choose one"
-                    >
-                      change
-                    </button>
+                    {row.band === "reject" ? (
+                      <CopyActions track={row.track} />
+                    ) : (
+                      <button
+                        className="link"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onInspect(row);
+                        }}
+                        title="See every candidate and choose one"
+                      >
+                        change
+                      </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -187,6 +267,51 @@ export function TrackTable({
       </div>
     </section>
   );
+}
+
+/**
+ * Copy helpers for a track you do not own yet: the Spotify link to open it, and
+ * "Artist - Title" to paste straight into a shop or search tool.
+ */
+function CopyActions({ track }: { track: SpotifyTrack }) {
+  const [state, setState] = useState<{ what: "link" | "name"; ok: boolean } | null>(null);
+
+  const copy = async (event: React.MouseEvent, what: "link" | "name") => {
+    event.stopPropagation();
+    const ok = await copyText(what === "link" ? track.url : searchQueryFor(track));
+    // Report failure rather than leaving the button looking like it worked.
+    setState({ what, ok });
+    window.setTimeout(() => setState(null), 1400);
+  };
+
+  const labelFor = (what: "link" | "name") =>
+    state?.what === what ? (state.ok ? "copied" : "failed") : what;
+
+  return (
+    <span className="copy-actions">
+      <button
+        className="link"
+        onClick={(event) => copy(event, "name")}
+        title="Copy 'Artist - Title' for searching"
+        disabled={!track.name}
+      >
+        {labelFor("name")}
+      </button>
+      <button
+        className="link"
+        onClick={(event) => copy(event, "link")}
+        title={track.url || "No Spotify link for this track"}
+        disabled={!track.url}
+      >
+        {labelFor("link")}
+      </button>
+    </span>
+  );
+}
+
+function formatMs(ms: number): string {
+  const total = Math.round(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function FilterTab({

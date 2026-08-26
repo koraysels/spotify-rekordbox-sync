@@ -12,10 +12,11 @@ import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
-import { TrackTable, type BandFilter } from "./components/TrackTable";
+import { TrackTable, type BandFilter, type BrowseState } from "./components/TrackTable";
 import type {
   ApplyResult,
   Playlist,
+  SpotifyTrack,
   PlaylistPlan,
   Settings,
   Status,
@@ -42,6 +43,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [picking, setPicking] = useState<TrackPlan | null>(null);
+  const [browse, setBrowse] = useState<Map<string, BrowseState>>(new Map());
 
   const [bandFilter, setBandFilter] = useState<BandFilter>("all");
   const [rowSelection, setRowSelection] = useState<Set<string>>(new Set());
@@ -217,6 +219,40 @@ export default function App() {
       setRowSelection(new Set());
     });
 
+  const openPlaylist = useCallback(
+    (playlistId: string) => {
+      setActivePlaylist(playlistId);
+      if (plans.has(playlistId) || browse.has(playlistId)) return;
+
+      setBrowse((current) =>
+        new Map(current).set(playlistId, { tracks: [], error: null, loading: true }),
+      );
+      rpc
+        .call<{ tracks: SpotifyTrack[]; error: string | null }>("playlists.tracks", {
+          playlistId,
+        })
+        .then((result) =>
+          setBrowse((current) =>
+            new Map(current).set(playlistId, {
+              tracks: result.tracks,
+              error: result.error,
+              loading: false,
+            }),
+          ),
+        )
+        .catch((cause) =>
+          setBrowse((current) =>
+            new Map(current).set(playlistId, {
+              tracks: [],
+              error: cause instanceof Error ? cause.message : String(cause),
+              loading: false,
+            }),
+          ),
+        );
+    },
+    [plans, browse],
+  );
+
   const activePlan = useMemo(
     () => (activePlaylist ? plans.get(activePlaylist) ?? null : null),
     [activePlaylist, plans],
@@ -264,7 +300,7 @@ export default function App() {
           active={activePlaylist}
           plans={plans}
           onToggle={togglePlaylist}
-          onActivate={setActivePlaylist}
+          onActivate={openPlaylist}
           onSelectAll={() => persistSelection(new Set(playlists.map((p) => p.id)))}
           onSelectNone={() => persistSelection(new Set())}
           filter={playlistFilter}
@@ -280,6 +316,7 @@ export default function App() {
           onInspect={setPicking}
           lastClicked={lastClicked}
           onLastClicked={setLastClicked}
+          browse={activePlaylist ? browse.get(activePlaylist) ?? null : null}
         />
       </main>
       )}
