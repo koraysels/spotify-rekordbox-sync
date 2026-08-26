@@ -350,6 +350,17 @@ class AppService:
                         )
                     )
 
+        # rekordbox reads its playlist tree from masterPlaylists6.xml as well as
+        # from the database. Re-register anything missing, so an interrupted
+        # earlier write cannot leave playlists that exist but never show up.
+        try:
+            with RekordboxLibrary.open(self.db_path) as library:
+                repaired = library.register_missing_in_xml()
+                if repaired:
+                    log.info("re-registered %d playlist(s) in the rekordbox tree", repaired)
+        except Exception:  # noqa: BLE001 - advisory; the write already succeeded
+            log.warning("could not verify the rekordbox playlist tree", exc_info=True)
+
         # Applying changes the rekordbox library, so every stored plan is now
         # describing a state that no longer exists.
         self.cache.clear_plans()
@@ -520,6 +531,11 @@ class AppService:
             ],
         }
 
+    def repair_playlist_tree(self) -> dict:
+        """Put database playlists back into rekordbox's playlist tree file."""
+        with RekordboxLibrary.open(self.db_path) as library:
+            return {"registered": library.register_missing_in_xml()}
+
     def rekordbox_playlists(self) -> list[dict]:
         """What is actually inside the rekordbox Spotify folder right now.
 
@@ -541,6 +557,11 @@ class AppService:
                 }
                 for p in sorted(playlists, key=lambda p: p.name.lower())
             ]
+
+    def playlist_tree_status(self) -> dict:
+        """Whether rekordbox can actually see everything in the database."""
+        with RekordboxLibrary.open(self.db_path) as library:
+            return {"missingFromTree": library.missing_from_xml()}
 
     # --- review ------------------------------------------------------------
 

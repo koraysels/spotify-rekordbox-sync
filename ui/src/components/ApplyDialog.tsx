@@ -112,11 +112,13 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
 
         {state.phase === "error" && (
           <>
-            <h2>Nothing was written</h2>
+            <h2>The sync did not finish</h2>
             <p className="hint warn">{state.error}</p>
             <p className="hint">
-              The write is a single transaction, so your library is exactly as it was
-              before you pressed Apply.
+              Each playlist is written in a single transaction, so no playlist is left
+              half-written. But if the failure happened partway through, earlier playlists
+              may already have landed — open <strong>In rekordbox</strong> to see what is
+              actually there, and <strong>Backups</strong> to go back if you want to.
             </p>
             <div className="modal-actions">
               <button className="primary" onClick={onClose}>

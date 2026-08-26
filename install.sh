@@ -47,6 +47,20 @@ cp -R "$SOURCE" "$TARGET"
 # Strip the quarantine flag from the bundle and the embedded sidecar binary.
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
 
+# Re-sign ad-hoc. Tauri's own ad-hoc signature can end up without a resource
+# seal ("code has no resources but signature indicates they must be present"),
+# and macOS then kills the app and its sidecar on launch — which looks like
+# "the app is damaged" and like the app hanging forever. Signing here produces
+# a valid seal. It is still not a Developer ID signature.
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --deep --sign - "$TARGET" >/dev/null 2>&1 || true
+  if codesign --verify --deep --strict "$TARGET" >/dev/null 2>&1; then
+    echo "signature: valid (ad-hoc)"
+  else
+    echo "signature: still invalid — the app may refuse to launch" >&2
+  fi
+fi
+
 echo
 echo "Installed: $TARGET"
 echo "Open it from Applications, or run: open '$TARGET'"

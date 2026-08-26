@@ -28,13 +28,18 @@ interface Props {
  */
 export function RekordboxPanel({ onClose }: Props) {
   const [playlists, setPlaylists] = useState<RbPlaylist[] | null>(null);
+  const [missingFromTree, setMissingFromTree] = useState(0);
+  const [repairing, setRepairing] = useState(false);
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     rpc
-      .call<{ playlists: RbPlaylist[] }>("rekordbox.playlists")
-      .then((result) => setPlaylists(result.playlists))
+      .call<{ playlists: RbPlaylist[]; missingFromTree: number }>("rekordbox.playlists")
+      .then((result) => {
+        setPlaylists(result.playlists);
+        setMissingFromTree(result.missingFromTree ?? 0);
+      })
       .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
     rpc
       .call<Health>("library.health")
@@ -91,6 +96,47 @@ export function RekordboxPanel({ onClose }: Props) {
               </p>
             )}
           </>
+        )}
+
+        {missingFromTree > 0 && (
+          <div className="confirm">
+            <p>
+              <strong>
+                {missingFromTree} playlist{missingFromTree === 1 ? "" : "s"} exist in the
+                database but not in rekordbox's playlist tree.
+              </strong>
+            </p>
+            <p className="hint">
+              rekordbox reads its tree from a separate file, and a write that was
+              interrupted before that file was updated leaves playlists that exist but do
+              not appear. Repairing adds them back to the tree; nothing is deleted.
+            </p>
+            <div className="modal-actions">
+              <button
+                className="primary"
+                disabled={repairing}
+                onClick={() => {
+                  setRepairing(true);
+                  rpc
+                    .call<{ registered: number }>("rekordbox.repair")
+                    .then((result) => {
+                      setMissingFromTree(0);
+                      setError(
+                        result.registered
+                          ? `Re-registered ${result.registered} playlist(s). Reopen rekordbox to see them.`
+                          : "Nothing needed repairing.",
+                      );
+                    })
+                    .catch((cause) =>
+                      setError(cause instanceof Error ? cause.message : String(cause)),
+                    )
+                    .finally(() => setRepairing(false));
+                }}
+              >
+                {repairing ? "Repairing…" : "Repair playlist tree"}
+              </button>
+            </div>
+          </div>
         )}
 
         {error && <p className="hint warn">{error}</p>}

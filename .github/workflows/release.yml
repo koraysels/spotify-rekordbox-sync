@@ -92,6 +92,15 @@ jobs:
         working-directory: ui
         run: npm run tauri build
 
+      - name: Check the signature
+        # An unsigned bundle has no resource seal, and macOS then refuses to
+        # launch the app ("is damaged") and kills its sidecar. tauri.conf.json
+        # sets an ad-hoc signing identity so the bundle is signed during the
+        # build, before the installer is made — this asserts that held.
+        run: |
+          APP=ui/src-tauri/target/release/bundle/macos/rbsync.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       - name: Name the artifacts
         id: artifacts
         run: |

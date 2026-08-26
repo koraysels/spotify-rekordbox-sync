@@ -197,13 +197,23 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         server.progress("Restoring rekordbox library")
         return service.restore_backup(str(path))
 
+    def rekordbox_repair(**_):
+        """Re-register playlists rekordbox cannot see because the tree file
+        was never updated."""
+        server.progress("Checking the rekordbox playlist tree")
+        return service.repair_playlist_tree()
+
     def library_health(**_):
         """Whole-collection file availability, split by cause."""
         return service.library_health()
 
     def rekordbox_playlists(**_):
-        """The playlists that currently exist inside rekordbox's Spotify folder."""
-        return {"playlists": service.rekordbox_playlists()}
+        """The playlists inside rekordbox's Spotify folder, plus whether the
+        playlist tree file agrees with the database."""
+        return {
+            "playlists": service.rekordbox_playlists(),
+            **service.playlist_tree_status(),
+        }
 
     def review_decide(decisions=None, **_):
         return {"decided": service.decide_bulk(list(decisions or []))}
@@ -257,6 +267,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("tracks.verify", tracks_verify),
         ("rekordbox.playlists", rekordbox_playlists),
         ("library.health", library_health),
+        ("rekordbox.repair", rekordbox_repair),
         ("backups.list", backups_list),
         ("backups.create", backups_create),
         ("backups.restore", backups_restore),

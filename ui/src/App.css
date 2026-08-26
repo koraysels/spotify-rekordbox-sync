@@ -450,6 +450,9 @@ li.empty {
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  /* Above the floating sync window (z-index 40), or an error raised from it is
+     hidden behind it. */
+  z-index: 60;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;

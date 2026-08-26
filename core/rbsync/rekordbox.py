@@ -26,6 +26,7 @@ from pathlib import Path
 import psutil
 from pyrekordbox import Rekordbox6Database
 from pyrekordbox.config import get_config
+from pyrekordbox.db6.database import SPECIAL_PLAYLIST_IDS
 
 from .models import LocalTrack, RbPlaylist
 
@@ -415,6 +416,49 @@ class RekordboxLibrary:
                 self._db.remove_from_playlist(str(playlist_id), song)
                 removed += 1
         return removed
+
+    def missing_from_xml(self) -> int:
+        """How many database playlists are absent from rekordbox's tree file."""
+        xml = getattr(self._db, "playlist_xml", None)
+        if xml is None:
+            return 0
+        return sum(
+            1
+            for playlist in self._db.get_playlist().all()
+            if str(playlist.ID) not in SPECIAL_PLAYLIST_IDS
+            and xml.get(playlist.ID) is None
+        )
+
+    def register_missing_in_xml(self) -> int:
+        """Add database playlists that are missing from masterPlaylists6.xml.
+
+        rekordbox reads its playlist tree from that file as well as from the
+        database. pyrekordbox commits the database first and updates the XML
+        afterwards, so a process that dies in between leaves playlists that
+        exist but are invisible in rekordbox. This puts them back in the tree.
+        """
+        xml = getattr(self._db, "playlist_xml", None)
+        if xml is None:
+            return 0
+
+        added = 0
+        for playlist in self._db.get_playlist().all():
+            if str(playlist.ID) in SPECIAL_PLAYLIST_IDS:
+                continue
+            if xml.get(playlist.ID) is not None:
+                continue
+            xml.add(
+                str(playlist.ID),
+                str(playlist.ParentID or "root"),
+                int(playlist.Attribute or 0),
+                playlist.updated_at,
+            )
+            added += 1
+
+        if added:
+            xml.save()
+            log.info("registered %d playlist(s) in masterPlaylists6.xml", added)
+        return added
 
     def commit(self) -> None:
         self._db.commit()
