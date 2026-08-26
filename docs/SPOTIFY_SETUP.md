@@ -89,6 +89,11 @@ Something else is using port 8888. Quit it and sign in again.
 **All playlists show 0 tracks**
 An old build. Spotify changed the playlist API; update to a current build.
 
+**Some of my playlists are missing from the list**
+By default the app hides playlists Spotify refuses to serve. Turn off
+**Settings → Playlists → "Only show playlists I can sync"** to list them all;
+they will still fail to sync, but you can see them.
+
 **A playlist shows "n/a" and won't sync**
 Spotify only returns the contents of playlists you **own or collaborate on**.
 Playlists you merely follow answer 403 and cannot be read at all — this is a
