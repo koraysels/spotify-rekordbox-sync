@@ -67,10 +67,38 @@ class TestIsrc:
 
 
 class TestDurationGuard:
-    def test_large_duration_delta_rejects_identical_title(self, config):
+    def test_large_duration_delta_never_auto_accepts(self, config):
         index = TrackIndex([local("1", "Strobe", "Deadmau5", 640)])
         result = match_track(spotify("s1", "Strobe", ["Deadmau5"], 320_000), index, config)
+        assert result.band is not Band.ACCEPT
+
+    def test_a_longer_version_of_the_same_track_is_offered_for_review(self, config):
+        index = TrackIndex([
+            local("1", "Beirut Ma Bet Mout (Extended Version)", "Yuksek", 373)
+        ])
+        result = match_track(spotify("s1", "Beirut Ma Bet Mout", ["Yuksek"], 229_000),
+                             index, config)
+        assert result.band is Band.REVIEW
+        assert result.best.track.id == "1"
+
+    def test_the_version_match_is_labelled(self, config):
+        index = TrackIndex([
+            local("1", "Beirut Ma Bet Mout (Extended Version)", "Yuksek", 373)
+        ])
+        result = match_track(spotify("s1", "Beirut Ma Bet Mout", ["Yuksek"], 229_000),
+                             index, config)
+        assert result.best.reason in ("other-version", "mix-mismatch")
+
+    def test_a_different_track_of_similar_length_is_still_rejected(self, config):
+        index = TrackIndex([local("1", "Completely Different Song", "Someone Else", 600)])
+        result = match_track(spotify("s1", "Strobe", ["Deadmau5"], 320_000), index, config)
         assert result.band is Band.REJECT
+
+    def test_same_title_different_artist_never_auto_accepts(self, config):
+        index = TrackIndex([local("1", "Closer (Extended Mix)", "Ne-Yo", 600)])
+        result = match_track(spotify("s1", "Closer", ["The Chainsmokers"], 240_000),
+                             index, config)
+        assert result.band is not Band.ACCEPT
 
     def test_small_duration_delta_still_accepts(self, config):
         index = TrackIndex([local("1", "Strobe", "Deadmau5", 322)])

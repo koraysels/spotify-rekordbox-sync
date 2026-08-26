@@ -38,3 +38,17 @@ def db_copy(pristine_db, tmp_path) -> Path:
     target = tmp_path / "master.db"
     shutil.copy2(pristine_db, target)
     return target
+
+
+@pytest.fixture
+def rekordbox_closed():
+    """Skip a test that writes if rekordbox is open.
+
+    pyrekordbox refuses to commit while rekordbox is running, and rightly so.
+    A test that fails for that reason is reporting the developer's desktop, not
+    the code, so it skips with a message that says which.
+    """
+    from rbsync.rekordbox import is_rekordbox_running
+
+    if is_rekordbox_running():
+        pytest.skip("rekordbox is running; quit it to run the write tests")

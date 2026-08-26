@@ -70,6 +70,27 @@ class MatchResult:
     candidates: list[MatchCandidate] = field(default_factory=list)
 
 
+def _looks_like_another_version(
+    title: str, other_title: str, artists: list[str], other_artists: list[str]
+) -> bool:
+    """Whether two differently-long tracks are versions of the same record.
+
+    An extended mix or edit carries the same name plus a descriptor and a very
+    different length. Treating that as a plain duration mismatch reports "you do
+    not own this" about a track sitting in the collection.
+    """
+    if not title or not other_title:
+        return False
+
+    shorter, longer = sorted((title, other_title), key=len)
+    if not (longer.startswith(shorter) or _similarity(title, other_title) >= 0.75):
+        return False
+
+    # The artist still has to line up, or every long track sharing a common word
+    # becomes a candidate.
+    return _artist_similarity(artists, other_artists) >= 0.5
+
+
 def _candidate_rank(candidate: MatchCandidate) -> tuple:
     """Order candidates best-first, breaking score ties deterministically.
 
@@ -221,7 +242,14 @@ class TrackIndex:
             indexed = self._tracks[position]
             delta = (indexed.track.length_seconds or 0.0) - duration
             if abs(delta) > self.config.max_duration_delta:
-                continue
+                # A different length usually means a different record. The
+                # exception is another version of the same one — a DJ owning the
+                # extended mix of a track Spotify lists at radio length. Show it
+                # for review rather than reporting "you do not own this".
+                if not _looks_like_another_version(
+                    title, indexed.title, artists, indexed.artists
+                ):
+                    continue
             scored.append(self._score(indexed, title, artists, tags, delta))
 
         scored.sort(key=_candidate_rank)
@@ -247,6 +275,11 @@ class TrackIndex:
         )
 
         reason = "score"
+        if abs(delta) > config.max_duration_delta:
+            # Never auto-accept a different-length version, whatever it scores.
+            ceiling = max(config.auto_accept - 0.01, 0.0)
+            score = min(score, ceiling)
+            reason = "other-version"
         if tags != set(indexed.tags):
             # Different mix descriptors mean different records. Keep it out of
             # the auto-accept band and let a human look.

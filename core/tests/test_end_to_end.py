@@ -40,7 +40,7 @@ def library_tracks(db_copy):
 
 
 @pytest.fixture
-def service(db_copy, tmp_path, monkeypatch, library_tracks):
+def service(db_copy, tmp_path, monkeypatch, library_tracks, rekordbox_closed):
     monkeypatch.setenv("RBSYNC_HOME", str(tmp_path))
     # Rekordbox may legitimately be open on the developer's machine; the gate
     # itself has its own dedicated tests.

@@ -42,6 +42,15 @@
     ],
     "macOS": {
       "signingIdentity": "-"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4ODQxM0JCNjA2NzExODUKUldTRkVXZGd1eE9FU0tvSThZWXdXQ1ZLZDNpZW5jUksrN3VOMnQ2U1NGdFdpU1lVRVVQVW1SdXAK",
+      "endpoints": [
+        "https://github.com/koraysels/spotify-rekordbox-sync/releases/latest/download/latest.json"
+      ]
     }
   }
 }

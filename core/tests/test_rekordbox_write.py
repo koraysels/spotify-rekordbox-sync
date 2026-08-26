@@ -4,7 +4,7 @@ from rbsync.rekordbox import SPOTIFY_FOLDER, RekordboxLibrary
 
 
 @pytest.fixture
-def library(db_copy):
+def library(db_copy, rekordbox_closed):
     lib = RekordboxLibrary.open(db_copy)
     yield lib
     lib.close()
@@ -47,7 +47,7 @@ class TestPlaylists:
         library.commit()
         assert first.id == second.id
 
-    def test_playlist_is_visible_after_reopen(self, db_copy):
+    def test_playlist_is_visible_after_reopen(self, db_copy, rekordbox_closed):
         with RekordboxLibrary.open(db_copy) as lib:
             folder = lib.ensure_folder(SPOTIFY_FOLDER)
             lib.ensure_playlist("Persisted", folder.id)
@@ -96,7 +96,7 @@ class TestTracks:
 
 
 class TestTransaction:
-    def test_rollback_discards_playlist(self, db_copy):
+    def test_rollback_discards_playlist(self, db_copy, rekordbox_closed):
         with RekordboxLibrary.open(db_copy) as lib:
             folder = lib.ensure_folder(SPOTIFY_FOLDER)
             lib.ensure_playlist("Doomed", folder.id)
@@ -105,7 +105,7 @@ class TestTransaction:
         with RekordboxLibrary.open(db_copy) as lib:
             assert lib.find_playlist("Doomed") is None
 
-    def test_failure_inside_transaction_leaves_db_untouched(self, db_copy):
+    def test_failure_inside_transaction_leaves_db_untouched(self, db_copy, rekordbox_closed):
         with pytest.raises(RuntimeError):
             with RekordboxLibrary.open(db_copy) as lib:
                 with lib.transaction():

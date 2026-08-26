@@ -12,7 +12,7 @@ from rbsync.rekordbox import SPOTIFY_FOLDER, RekordboxLibrary
 
 
 @pytest.fixture
-def library(db_copy):
+def library(db_copy, rekordbox_closed):
     lib = RekordboxLibrary.open(db_copy)
     yield lib
     lib.close()

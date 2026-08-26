@@ -18,6 +18,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { WantlistBanner } from "./components/WantlistBanner";
 import {
   TrackTable,
@@ -408,6 +409,8 @@ export default function App() {
         onLibrary={() => setShowLibrary(true)}
         onBackups={() => setShowBackups(true)}
       />
+
+      <UpdateBanner />
 
       {cloudWarning && (
         <Banner
