@@ -1,3 +1,4 @@
+import { Spinner } from "./Spinner";
 import type { Status } from "../types";
 
 interface Props {
@@ -33,7 +34,11 @@ export function StatusBar({ status, busy, onSettings, onHistory }: Props) {
         />
       </div>
       <div className="statusbar-right">
-        {busy && <span className="busy">{busy}</span>}
+        {busy && (
+          <span className="busy">
+            <Spinner size={12} label={busy} />
+          </span>
+        )}
         <button className="ghost" onClick={onHistory}>
           History
         </button>

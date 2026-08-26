@@ -1,3 +1,4 @@
+import { Spinner } from "./Spinner";
 import type { Playlist, PlaylistPlan } from "../types";
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   onSelectNone: () => void;
   filter: string;
   onFilter: (value: string) => void;
+  loading: boolean;
 }
 
 export function PlaylistList({
@@ -24,6 +26,7 @@ export function PlaylistList({
   onSelectNone,
   filter,
   onFilter,
+  loading,
 }: Props) {
   const visible = playlists.filter((p) =>
     p.name.toLowerCase().includes(filter.toLowerCase()),
@@ -80,7 +83,16 @@ export function PlaylistList({
             </li>
           );
         })}
-        {visible.length === 0 && <li className="empty">No playlists match.</li>}
+        {loading && playlists.length === 0 && (
+          <li className="playlists-loading">
+            <Spinner size={13} label="Loading playlists…" />
+          </li>
+        )}
+        {!loading && visible.length === 0 && (
+          <li className="empty">
+            {playlists.length === 0 ? "No playlists yet." : "No playlists match."}
+          </li>
+        )}
       </ul>
     </aside>
   );

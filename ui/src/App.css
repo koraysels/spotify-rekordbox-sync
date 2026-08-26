@@ -280,18 +280,75 @@ tbody td {
   width: 92px;
 }
 .col-change {
-  width: 96px;
+  width: 132px;
   text-align: right;
+  /* Tooltips are absolutely positioned inside this cell, and tbody cells clip
+     their content by default. */
+  overflow: visible;
+  position: relative;
 }
 
 .copy-actions {
   display: inline-flex;
-  gap: 2px;
+  gap: 4px;
   justify-content: flex-end;
 }
 
-.copy-actions button {
-  padding: 2px 3px;
+/* Compact button used for row-level actions. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  position: relative;
+}
+
+.chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #3d4450;
+}
+
+.chip.ok {
+  color: var(--accent);
+  border-color: rgba(29, 185, 84, 0.45);
+}
+
+.chip.bad {
+  color: var(--danger);
+  border-color: rgba(224, 87, 74, 0.45);
+}
+
+.chip svg {
+  flex: none;
+}
+
+/* Tooltip, shown above the button and anchored to its right edge so it never
+   runs off the window. */
+.chip[data-tip]:hover::after,
+.chip[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: #0a0c0f;
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
 
 .col-score {
@@ -560,4 +617,60 @@ button.big {
   text-transform: uppercase;
   font-size: 10px;
   letter-spacing: 0.08em;
+}
+
+/* --- activity indicator --- */
+
+.spinner-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spinner {
+  display: inline-block;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.75;
+  animation: spin 620ms linear infinite;
+  flex: none;
+}
+
+.spinner-label {
+  color: var(--muted);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Pulse rather than spin, so the state is still visible without motion. */
+  .spinner {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.9; }
+  }
+}
+
+.playlists-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 12px;
+  color: var(--muted);
+}
+
+.connect-busy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
 }

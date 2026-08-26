@@ -1,3 +1,5 @@
+import { Spinner } from "./Spinner";
+
 interface Props {
   clientIdSet: boolean;
   busy: boolean;
@@ -21,13 +23,27 @@ export function ConnectPanel({ clientIdSet, busy, onConnect, onSettings }: Props
 
         {clientIdSet ? (
           <>
-            <button className="primary big" disabled={busy} onClick={onConnect}>
-              {busy ? "Waiting for Spotify…" : "Sign in with Spotify"}
-            </button>
-            <p className="hint">
-              Opens Spotify in your browser. Nothing is written to rekordbox until you
-              review a plan and press Apply.
-            </p>
+            {busy ? (
+              <div className="connect-busy">
+                <button className="primary big" disabled>
+                  <Spinner size={14} label="Waiting for Spotify…" />
+                </button>
+                <p className="hint">
+                  Approve the request in your browser. This window will fill in on its own
+                  once Spotify answers.
+                </p>
+              </div>
+            ) : (
+              <>
+                <button className="primary big" onClick={onConnect}>
+                  Sign in with Spotify
+                </button>
+                <p className="hint">
+                  Opens Spotify in your browser. Nothing is written to rekordbox until you
+                  review a plan and press Apply.
+                </p>
+              </>
+            )}
           </>
         ) : (
           <>

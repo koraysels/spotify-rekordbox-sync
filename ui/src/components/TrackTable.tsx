@@ -241,12 +241,12 @@ export function TrackTable({
                       <CopyActions track={row.track} />
                     ) : (
                       <button
-                        className="link"
+                        className="chip"
                         onClick={(event) => {
                           event.stopPropagation();
                           onInspect(row);
                         }}
-                        title="See every candidate and choose one"
+                        data-tip="See every candidate and choose one"
                       >
                         change
                       </button>
@@ -269,9 +269,45 @@ export function TrackTable({
   );
 }
 
+function ClipboardIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
+      <path
+        d="M5.5 2.5h5M5.5 2.5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1h-5v-1Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10.5 3.5h1.5a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
+      <path
+        d="M3.5 8.5l3 3 6-7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /**
- * Copy helpers for a track you do not own yet: the Spotify link to open it, and
- * "Artist - Title" to paste straight into a shop or search tool.
+ * Copy helpers for a track you do not own yet: "Artist - Title" to paste into a
+ * shop or search tool, and the Spotify link to open the original.
  */
 function CopyActions({ track }: { track: SpotifyTrack }) {
   const [state, setState] = useState<{ what: "link" | "name"; ok: boolean } | null>(null);
@@ -281,29 +317,44 @@ function CopyActions({ track }: { track: SpotifyTrack }) {
     const ok = await copyText(what === "link" ? track.url : searchQueryFor(track));
     // Report failure rather than leaving the button looking like it worked.
     setState({ what, ok });
-    window.setTimeout(() => setState(null), 1400);
+    window.setTimeout(() => setState(null), 1500);
   };
 
-  const labelFor = (what: "link" | "name") =>
-    state?.what === what ? (state.ok ? "copied" : "failed") : what;
+  const done = (what: "link" | "name") => state?.what === what;
 
   return (
     <span className="copy-actions">
       <button
-        className="link"
+        className={done("name") ? (state!.ok ? "chip ok" : "chip bad") : "chip"}
         onClick={(event) => copy(event, "name")}
-        title="Copy 'Artist - Title' for searching"
+        data-tip={
+          done("name")
+            ? state!.ok
+              ? "Copied to clipboard"
+              : "Could not reach the clipboard"
+            : `Copy "${searchQueryFor(track)}"`
+        }
         disabled={!track.name}
       >
-        {labelFor("name")}
+        {done("name") ? <CheckIcon /> : <ClipboardIcon />}
+        <span>{done("name") ? (state!.ok ? "copied" : "failed") : "name"}</span>
       </button>
       <button
-        className="link"
+        className={done("link") ? (state!.ok ? "chip ok" : "chip bad") : "chip"}
         onClick={(event) => copy(event, "link")}
-        title={track.url || "No Spotify link for this track"}
+        data-tip={
+          !track.url
+            ? "No Spotify link for this track"
+            : done("link")
+              ? state!.ok
+                ? "Copied to clipboard"
+                : "Could not reach the clipboard"
+              : "Copy the Spotify link"
+        }
         disabled={!track.url}
       >
-        {labelFor("link")}
+        {done("link") ? <CheckIcon /> : <ClipboardIcon />}
+        <span>{done("link") ? (state!.ok ? "copied" : "failed") : "link"}</span>
       </button>
     </span>
   );

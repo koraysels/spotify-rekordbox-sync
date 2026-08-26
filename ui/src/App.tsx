@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import "./App.css";
-import { rpc } from "./rpc";
+import { isTauri, rpc } from "./rpc";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
 import { CandidatePicker } from "./components/CandidatePicker";
@@ -114,6 +114,14 @@ export default function App() {
 
   const connectSpotify = () =>
     run("Waiting for Spotify sign-in", async () => {
+      if (!isTauri()) {
+        // The OAuth redirect is caught by a loopback listener in the Rust
+        // shell, which does not exist when the UI runs in a plain browser.
+        throw new Error(
+          "Signing in needs the desktop app — the browser dev server cannot " +
+            "receive Spotify's redirect. Sign in from rbsync.app instead.",
+        );
+      }
       const { url } = await rpc.call<{ url: string }>("auth.begin", {
         redirectUri: REDIRECT_URI,
       });
@@ -305,6 +313,7 @@ export default function App() {
           onSelectNone={() => persistSelection(new Set())}
           filter={playlistFilter}
           onFilter={setPlaylistFilter}
+          loading={busy !== null}
         />
         <TrackTable
           plan={activePlan}
