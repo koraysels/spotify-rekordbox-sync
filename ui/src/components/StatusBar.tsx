@@ -7,8 +7,7 @@ interface Props {
   onSettings: () => void;
   onHistory: () => void;
   onLibrary: () => void;
-  view: "sync" | "tracks";
-  onView: (value: "sync" | "tracks") => void;
+  onBackups: () => void;
 }
 
 export function StatusBar({
@@ -17,8 +16,7 @@ export function StatusBar({
   onSettings,
   onHistory,
   onLibrary,
-  view,
-  onView,
+  onBackups,
 }: Props) {
   return (
     <header className="statusbar" data-tauri-drag-region>
@@ -45,14 +43,7 @@ export function StatusBar({
         />
       </div>
       <div className="statusbar-right">
-        <span className="viewtabs">
-          <button className={view === "sync" ? "on" : ""} onClick={() => onView("sync")}>
-            Sync
-          </button>
-          <button className={view === "tracks" ? "on" : ""} onClick={() => onView("tracks")}>
-            Tracks
-          </button>
-        </span>
+
         {busy && (
           <span className="busy">
             <Spinner size={12} label={busy} />
@@ -60,6 +51,9 @@ export function StatusBar({
         )}
         <button className="ghost" onClick={onLibrary}>
           In rekordbox
+        </button>
+        <button className="ghost" onClick={onBackups}>
+          Backups
         </button>
         <button className="ghost" onClick={onHistory}>
           History

@@ -32,7 +32,16 @@ log = logging.getLogger(__name__)
 
 SPOTIFY_FOLDER = "Spotify"
 BACKUP_PREFIX = "master_"
+# The state of the library before this tool ever wrote to it. Kept apart from
+# the rolling backups and never pruned: after ten syncs every rolling backup is
+# itself post-rbsync, so without this there is nothing to go back to.
+ORIGINAL_PREFIX = "original_"
 BACKUP_KEEP = 10
+
+# rekordbox runs SQLite in WAL mode, so recent commits live in these sidecars
+# rather than in master.db. A backup of the main file alone can be hours stale,
+# and a restore that leaves a newer -wal behind simply replays it.
+SIDECARS = ("-wal", "-shm")
 
 # Rekordbox marks folders with Attribute == 1; ordinary playlists use 0.
 ATTR_PLAYLIST = 0
@@ -98,10 +107,9 @@ def backup_database(db_path: str | Path, backup_dir: str | Path) -> Path:
 
     directory = Path(backup_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    target = directory / f"{BACKUP_PREFIX}{stamp}.db"
+    target = _unique_backup_path(directory, BACKUP_PREFIX)
 
-    shutil.copy2(source, target)
+    _copy_database_set(source, target)
 
     if not target.exists():
         raise BackupFailed(f"backup was not created: {target}")
@@ -114,14 +122,135 @@ def backup_database(db_path: str | Path, backup_dir: str | Path) -> Path:
     return target
 
 
+def _copy_database_set(source: Path, target: Path) -> None:
+    """Copy a SQLite database together with its write-ahead-log sidecars.
+
+    The three files are one logical state; copying only the first captures the
+    database as of its last checkpoint, not as it is now.
+    """
+    shutil.copy2(source, target)
+    for suffix in SIDECARS:
+        sidecar = Path(f"{source}{suffix}")
+        companion = Path(f"{target}{suffix}")
+        if sidecar.exists():
+            shutil.copy2(sidecar, companion)
+        else:
+            companion.unlink(missing_ok=True)
+
+
+def _unique_backup_path(directory: Path, prefix: str) -> Path:
+    """A backup filename that cannot collide with an existing one.
+
+    Timestamps are second-resolution, so two backups in the same second would
+    otherwise overwrite each other — which can destroy the very file a restore
+    is reading from.
+    """
+    stamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+    candidate = directory / f"{prefix}{stamp}.db"
+    counter = 2
+    while candidate.exists():
+        candidate = directory / f"{prefix}{stamp}-{counter}.db"
+        counter += 1
+    return candidate
+
+
 def prune_backups(backup_dir: str | Path, keep: int = BACKUP_KEEP) -> None:
-    """Keep only the newest ``keep`` backups; leave unrelated files alone."""
+    """Keep only the newest ``keep`` rolling backups.
+
+    Only files with the rolling prefix are considered, so the baseline copy and
+    anything else in the folder survive.
+    """
     directory = Path(backup_dir)
     if not directory.exists():
         return
     backups = sorted(directory.glob(f"{BACKUP_PREFIX}*.db"), key=lambda p: p.name)
     for stale in backups[:-keep] if keep > 0 else backups:
         stale.unlink(missing_ok=True)
+        for suffix in SIDECARS:
+            Path(f"{stale}{suffix}").unlink(missing_ok=True)
+
+
+def ensure_baseline_backup(db_path: str | Path, backup_dir: str | Path) -> Path | None:
+    """Take a one-time copy of the library as it was before rbsync touched it.
+
+    Returns the baseline path, creating it if this is the first write.
+    """
+    directory = Path(backup_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    existing = sorted(directory.glob(f"{ORIGINAL_PREFIX}*.db"))
+    if existing:
+        return existing[0]
+
+    source = Path(db_path)
+    if not source.exists():
+        raise BackupFailed(f"database not found: {source}")
+
+    target = _unique_backup_path(directory, ORIGINAL_PREFIX)
+    _copy_database_set(source, target)
+    if target.stat().st_size != source.stat().st_size:
+        target.unlink(missing_ok=True)
+        raise BackupFailed("baseline backup did not copy completely")
+    log.info("baseline backup written to %s", target)
+    return target
+
+
+def list_backups(backup_dir: str | Path) -> list[dict]:
+    """Every backup on disk, newest first, with the baseline flagged."""
+    directory = Path(backup_dir)
+    if not directory.exists():
+        return []
+    entries: list[dict] = []
+    for path in directory.glob("*.db"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        entries.append(
+            {
+                "name": path.name,
+                "path": str(path),
+                "size": stat.st_size,
+                "createdAt": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                    timespec="seconds"
+                ),
+                "isOriginal": path.name.startswith(ORIGINAL_PREFIX),
+            }
+        )
+    return sorted(entries, key=lambda entry: entry["name"], reverse=True)
+
+
+def restore_backup(
+    backup_path: str | Path, db_path: str | Path, backup_dir: str | Path
+) -> Path:
+    """Put a backup back in place of the live database.
+
+    Restoring is itself a destructive change, so the current database is copied
+    aside first — going back must be as reversible as going forward.
+    """
+    source = Path(backup_path)
+    target = Path(db_path)
+
+    if not source.exists():
+        raise BackupFailed(f"backup not found: {source}")
+    if source.stat().st_size == 0:
+        raise BackupFailed(f"backup is empty: {source}")
+    if is_rekordbox_running():
+        raise RekordboxRunning(
+            "Rekordbox is running. Quit rekordbox completely before restoring — "
+            "replacing the database underneath it will corrupt your library."
+        )
+
+    safety = backup_database(target, backup_dir) if target.exists() else None
+
+    # Replace the whole set. Removing a sidecar the backup did not have is as
+    # important as copying one it did: a leftover -wal replays its commits on
+    # top of the file just restored.
+    _copy_database_set(source, target)
+    if target.stat().st_size != source.stat().st_size:
+        if safety is not None:
+            _copy_database_set(safety, target)
+        raise BackupFailed("restore did not copy completely; original left in place")
+    return target
 
 
 def ensure_safe_to_write(db_path: str | Path, backup_dir: str | Path) -> Path:
@@ -131,6 +260,8 @@ def ensure_safe_to_write(db_path: str | Path, backup_dir: str | Path) -> Path:
             "Rekordbox is running. Quit rekordbox completely and try again — "
             "writing while it is open can corrupt your library."
         )
+    # Before anything else, preserve the pre-rbsync state exactly once.
+    ensure_baseline_backup(db_path, backup_dir)
     backup = backup_database(db_path, backup_dir)
     prune_backups(backup_dir)
     return backup

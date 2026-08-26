@@ -152,7 +152,41 @@ its outcome changes:
 When a restored plan is out of date, its coverage is greyed out with a `*` and
 the tooltip says why. **Plan sync** always recomputes from scratch.
 
-## History and backups
+## Backups and going back
+
+Your rekordbox database is copied before every write, and the copy is
+size-checked before anything changes. **Backups** in the toolbar lists them,
+takes one on demand, reveals one in Finder, and restores one.
+
+Two things make the restore trustworthy:
+
+- **The baseline is kept forever.** A copy of the library from before rbsync
+  ever wrote to it is taken once and never pruned, so there is always a way back
+  to the original state — the rolling backups are all post-rbsync after ten
+  syncs.
+- **The write-ahead log travels with it.** rekordbox runs SQLite in WAL mode, so
+  recent commits live in `master.db-wal`, not in `master.db`. Backing up only the
+  main file captures a stale database, and restoring only the main file leaves
+  the newer WAL to replay straight back over it. All three files are copied and
+  restored as one set.
+
+Restoring takes a copy of the current state first, so a restore is itself
+reversible, and it refuses to run while rekordbox is open.
+
+## Releases
+
+Tagging a commit builds and publishes a release:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow runs the test suite, freezes the Python core, builds signed-less
+`.dmg` bundles for Apple Silicon and Intel, and attaches them to a GitHub
+release with install instructions. Set the repository variable
+`RBSYNC_SPOTIFY_CLIENT_ID` to bake a Spotify Client ID into published builds.
+
+## History
 
 Every Apply is recorded: which playlist, how many tracks added and removed,
 the coverage at the time, and the path of the backup taken immediately before.

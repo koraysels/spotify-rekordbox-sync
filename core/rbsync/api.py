@@ -184,6 +184,19 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         """Which matched files are actually still on disk."""
         return {"files": service.verify_files(list(contentIds or []))}
 
+    def backups_list(**_):
+        return {"backups": service.list_backups()}
+
+    def backups_create(**_):
+        server.progress("Backing up your rekordbox library")
+        return service.create_backup()
+
+    def backups_restore(path=None, **_):
+        if not path:
+            raise RuntimeError("path is required")
+        server.progress("Restoring rekordbox library")
+        return service.restore_backup(str(path))
+
     def library_health(**_):
         """Whole-collection file availability, split by cause."""
         return service.library_health()
@@ -244,6 +257,9 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("tracks.verify", tracks_verify),
         ("rekordbox.playlists", rekordbox_playlists),
         ("library.health", library_health),
+        ("backups.list", backups_list),
+        ("backups.create", backups_create),
+        ("backups.restore", backups_restore),
         ("history.list", history_list),
         ("wantlist.get", wantlist_get),
         ("wantlist.export", wantlist_export),

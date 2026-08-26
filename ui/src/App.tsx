@@ -8,6 +8,7 @@ import { revealPath } from "./reveal";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
 import { ApplyDialog, type ApplyState } from "./components/ApplyDialog";
+import { BackupsPanel } from "./components/BackupsPanel";
 import { CandidatePicker } from "./components/CandidatePicker";
 import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
@@ -15,6 +16,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
+import { FloatingWindow } from "./components/FloatingWindow";
 import { SyncView } from "./components/SyncView";
 import { WantlistBanner } from "./components/WantlistBanner";
 import {
@@ -54,7 +56,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
-  const [view, setView] = useState<"sync" | "tracks">("sync");
+  const [showBackups, setShowBackups] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
   // Bumped after an Apply so the rekordbox column re-reads the database.
   const [libraryVersion, setLibraryVersion] = useState(0);
   const [applyState, setApplyState] = useState<ApplyState | null>(null);
@@ -397,8 +400,7 @@ export default function App() {
         onSettings={() => setShowSettings(true)}
         onHistory={() => setShowHistory(true)}
         onLibrary={() => setShowLibrary(true)}
-        view={view}
-        onView={setView}
+        onBackups={() => setShowBackups(true)}
       />
 
       {cloudWarning && (
@@ -432,21 +434,6 @@ export default function App() {
           onConnect={connectSpotify}
           onSettings={() => setShowSettings(true)}
         />
-      ) : view === "sync" ? (
-        <SyncView
-          playlists={playlists}
-          selected={selected}
-          plans={plans}
-          busy={busy !== null}
-          rekordboxRunning={Boolean(status?.rekordbox_running)}
-          hasPlan={plans.size > 0}
-          onToggle={togglePlaylist}
-          onSelectAll={() => persistSelection(new Set(playlists.map((p) => p.id)))}
-          onSelectNone={() => persistSelection(new Set())}
-          onPlan={planSync}
-          onApply={applySync}
-          refreshKey={libraryVersion}
-        />
       ) : (
       <main className="main">
         <PlaylistList
@@ -479,8 +466,8 @@ export default function App() {
       </main>
       )}
 
-      {view === "tracks" && (
       <BottomBar
+        onOpenSync={() => setSyncOpen(true)}
         selectedCount={selected.size}
         coverage={coverage}
         hasPlan={plans.size > 0}
@@ -490,10 +477,43 @@ export default function App() {
         onApply={applySync}
         onExport={exportWantlist}
       />
+
+      {syncOpen && (
+        <FloatingWindow title="Sync" onClose={() => setSyncOpen(false)} width={940}>
+          <SyncView
+            playlists={playlists}
+            selected={selected}
+            plans={plans}
+            busy={busy !== null}
+            rekordboxRunning={Boolean(status?.rekordbox_running)}
+            hasPlan={plans.size > 0}
+            onToggle={togglePlaylist}
+            onSelectAll={() => persistSelection(new Set(playlists.map((p) => p.id)))}
+            onSelectNone={() => persistSelection(new Set())}
+            onPlan={planSync}
+            onApply={applySync}
+            refreshKey={libraryVersion}
+          />
+        </FloatingWindow>
       )}
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
+      {showBackups && (
+        <BackupsPanel
+          onClose={() => setShowBackups(false)}
+          onRestored={() => {
+            // The library on disk changed, so everything derived from it is stale.
+            setPlans(new Map());
+            setCoverage(null);
+            setFiles(new Map());
+            restoredFor.current = null;
+            setLibraryVersion((current) => current + 1);
+            setNotice("rekordbox library restored from backup.");
+            void refreshStatus();
+          }}
+        />
+      )}
 
       {applyState && (
         <ApplyDialog

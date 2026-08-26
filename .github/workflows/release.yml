@@ -1,0 +1,162 @@
+name: Release
+
+# Tag a commit to cut a release:
+#   git tag v0.2.0 && git push origin v0.2.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build, e.g. v0.2.0 (no tag is created)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            runner: macos-14
+          - arch: x86_64
+            runner: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          RAW="${{ github.event.inputs.version || github.ref_name }}"
+          echo "tag=$RAW" >> "$GITHUB_OUTPUT"
+          echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui/src-tauri
+
+      - name: Stamp the version
+        # Keeps the bundle's version in step with the tag, so the artifact name
+        # and the About box agree with the release.
+        run: |
+          python3 - "${{ steps.version.outputs.number }}" <<'PY'
+          import json, pathlib, re, sys
+          version = sys.argv[1]
+          conf = pathlib.Path("ui/src-tauri/tauri.conf.json")
+          data = json.loads(conf.read_text())
+          data["version"] = version
+          conf.write_text(json.dumps(data, indent=2) + "\n")
+          cargo = pathlib.Path("ui/src-tauri/Cargo.toml")
+          text = cargo.read_text()
+          cargo.write_text(re.sub(r'^version = ".*"$', f'version = "{version}"',
+                                  text, count=1, flags=re.M))
+          PY
+
+      - name: Test the Python core
+        run: |
+          uv venv core/.venv --python 3.12
+          uv pip install --python core/.venv/bin/python -e "core[dev]"
+          core/.venv/bin/python -m pytest core/tests -q
+
+      - name: Build the sidecar
+        env:
+          # Optional: bake a Spotify Client ID into the shipped build so users
+          # do not have to supply one. A Client ID is not a secret under PKCE.
+          RBSYNC_SPOTIFY_CLIENT_ID: ${{ vars.RBSYNC_SPOTIFY_CLIENT_ID }}
+        run: ./core/build_sidecar.sh
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build the app
+        working-directory: ui
+        run: npm run tauri build
+
+      - name: Name the artifacts
+        id: artifacts
+        run: |
+          mkdir -p dist
+          VERSION="${{ steps.version.outputs.number }}"
+          ARCH="${{ matrix.arch }}"
+          for dmg in ui/src-tauri/target/release/bundle/dmg/*.dmg; do
+            cp "$dmg" "dist/rbsync_${VERSION}_macos_${ARCH}.dmg"
+          done
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/*.dmg
+
+  publish:
+    name: Publish release
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Resolve version
+        id: version
+        run: echo "tag=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Install
+
+          Download the `.dmg` for your Mac — `aarch64` for Apple Silicon,
+          `x86_64` for Intel — and drag rbsync to Applications.
+
+          **The app is not signed**, so macOS will say it "is damaged and can't
+          be opened". It is not damaged; that is what macOS reports for unsigned
+          apps. Clear the quarantine flag once:
+
+          ```bash
+          xattr -dr com.apple.quarantine /Applications/rbsync.app
+          ```
+
+          ## Before you sync
+
+          - Quit rekordbox completely. The app refuses to write while it runs.
+          - Turn off rekordbox Cloud Library Sync if you use it.
+          - Your library is backed up before every write, and the state from
+            before rbsync ever touched it is kept permanently.
+
+          Spotify setup takes about three minutes and is described in
+          `docs/SPOTIFY_SETUP.md`.
+          NOTES
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          FILES=$(find artifacts -name '*.dmg')
+          echo "publishing: $FILES"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" $FILES --clobber
+          else
+            gh release create "$TAG" $FILES \
+              --title "rbsync $TAG" \
+              --notes-file notes.md
+          fi

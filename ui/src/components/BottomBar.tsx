@@ -1,6 +1,7 @@
 import type { Coverage } from "../types";
 
 interface Props {
+  onOpenSync: () => void;
   selectedCount: number;
   coverage: Coverage | null;
   hasPlan: boolean;
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function BottomBar({
+  onOpenSync,
   selectedCount,
   coverage,
   hasPlan,
@@ -23,6 +25,9 @@ export function BottomBar({
 }: Props) {
   return (
     <footer className="bottombar">
+      <button className="primary sync-launcher" onClick={onOpenSync}>
+        Sync…
+      </button>
       <div className="summary">
         {coverage ? (
           <>

@@ -915,3 +915,81 @@ button.big {
 .apply-running p {
   margin: 0;
 }
+
+.confirm {
+  border: 1px solid rgba(224, 87, 74, 0.5);
+  background: rgba(224, 87, 74, 0.08);
+  border-radius: 7px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.confirm p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  align-items: center;
+}
+
+/* --- floating window --- */
+
+.floating {
+  position: fixed;
+  left: 50%;
+  top: 12%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  max-height: 76vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.floating-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.floating-bar:active {
+  cursor: grabbing;
+}
+
+.floating-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.floating-body {
+  display: flex;
+  min-height: 420px;
+  overflow: hidden;
+}
+
+.floating-body .syncview {
+  flex: 1;
+}
+
+.sync-launcher {
+  margin-right: auto;
+}
+
+.bottombar .summary {
+  margin-right: auto;
+  padding-left: 16px;
+}

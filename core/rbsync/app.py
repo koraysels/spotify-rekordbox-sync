@@ -21,9 +21,13 @@ from .models import Coverage, SpotifyPlaylist, SpotifyTrack
 from .rekordbox import (
     SPOTIFY_FOLDER,
     RekordboxLibrary,
+    backup_database,
     default_database_path,
+    ensure_baseline_backup,
     ensure_safe_to_write,
     is_rekordbox_running,
+    list_backups as _list_backups,
+    restore_backup as _restore_backup,
 )
 from .spotify import PlaylistAccessDenied, SpotifyClient, Tokens, refresh
 from .persist import plan_from_json, plan_to_json
@@ -363,6 +367,47 @@ class AppService:
     def history(self, playlist_id: str | None = None, limit: int = 50) -> list:
         """Past syncs, newest first."""
         return self.cache.get_history(playlist_id=playlist_id, limit=limit)
+
+    # --- backups -----------------------------------------------------------
+
+    def list_backups(self) -> list[dict]:
+        return _list_backups(paths.backups_dir())
+
+    def create_backup(self) -> dict:
+        """Take a backup right now, without writing anything.
+
+        Lets someone capture a known-good state before experimenting, rather
+        than relying on the copy a sync happens to make.
+        """
+        directory = paths.backups_dir()
+        ensure_baseline_backup(self.db_path, directory)
+        path = backup_database(self.db_path, directory)
+        stat = path.stat()
+        return {
+            "name": path.name,
+            "path": str(path),
+            "size": stat.st_size,
+            "isOriginal": False,
+        }
+
+    def restore_backup(self, backup_path: str) -> dict:
+        """Put a backup back. Only files inside our own backup folder qualify.
+
+        Restore overwrites the live rekordbox database, so accepting an
+        arbitrary path would turn this into a way to clobber the library with
+        any file on disk.
+        """
+        directory = paths.backups_dir().resolve()
+        candidate = Path(backup_path).resolve()
+        if candidate.parent != directory:
+            raise ValueError("Only backups created by this app can be restored.")
+
+        restored = _restore_backup(candidate, self.db_path, directory)
+        # The library on disk is different now; anything derived from it is stale.
+        self.cache.clear_plans()
+        self._index = None
+        self._track_count = 0
+        return {"restored": str(restored), "from": str(candidate)}
 
     # --- file checks -------------------------------------------------------
 
