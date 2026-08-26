@@ -80,10 +80,8 @@ jobs:
           core/.venv/bin/python -m pytest core/tests -q
 
       - name: Build the sidecar
-        env:
-          # Optional: bake a Spotify Client ID into the shipped build so users
-          # do not have to supply one. A Client ID is not a secret under PKCE.
-          RBSYNC_SPOTIFY_CLIENT_ID: ${{ vars.RBSYNC_SPOTIFY_CLIENT_ID }}
+        # No Spotify Client ID is baked in. Published builds are meant to be
+        # shared publicly, and each user enters their own in Settings.
         run: ./core/build_sidecar.sh
 
       - name: Install UI dependencies
@@ -110,9 +108,90 @@ jobs:
           name: macos-${{ matrix.arch }}
           path: dist/*.dmg
 
+  windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          RAW="${{ github.event.inputs.version || github.ref_name }}"
+          echo "tag=$RAW" >> "$GITHUB_OUTPUT"
+          echo "number=${RAW#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui/src-tauri
+
+      - name: Stamp the version
+        run: |
+          python - "${{ steps.version.outputs.number }}" <<'PY'
+          import json, pathlib, re, sys
+          version = sys.argv[1]
+          conf = pathlib.Path("ui/src-tauri/tauri.conf.json")
+          data = json.loads(conf.read_text())
+          data["version"] = version
+          conf.write_text(json.dumps(data, indent=2) + "\n")
+          cargo = pathlib.Path("ui/src-tauri/Cargo.toml")
+          text = cargo.read_text()
+          cargo.write_text(re.sub(r'^version = ".*"$', f'version = "{version}"',
+                                  text, count=1, flags=re.M))
+          PY
+
+      - name: Test the Python core
+        run: |
+          uv venv core/.venv --python 3.12
+          uv pip install --python core/.venv/Scripts/python.exe -e "core[dev]"
+          core/.venv/Scripts/python.exe -m pytest core/tests -q
+
+      - name: Build the sidecar
+        run: ./core/build_sidecar.sh
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Build the app
+        working-directory: ui
+        run: npm run tauri build
+
+      - name: Name the artifacts
+        run: |
+          mkdir -p dist
+          VERSION="${{ steps.version.outputs.number }}"
+          for installer in ui/src-tauri/target/release/bundle/nsis/*-setup.exe; do
+            [ -e "$installer" ] || continue
+            cp "$installer" "dist/rbsync_${VERSION}_windows_x86_64-setup.exe"
+          done
+          for msi in ui/src-tauri/target/release/bundle/msi/*.msi; do
+            [ -e "$msi" ] || continue
+            cp "$msi" "dist/rbsync_${VERSION}_windows_x86_64.msi"
+          done
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+
   publish:
     name: Publish release
-    needs: macos
+    needs: [macos, windows]
     # Runs even if the optional Intel leg never produced anything, so long as
     # something was built.
     if: always()
@@ -134,8 +213,10 @@ jobs:
           cat > notes.md <<'NOTES'
           ## Install
 
-          Download the `.dmg` for your Mac — `aarch64` for Apple Silicon,
-          `x86_64` for Intel — and drag rbsync to Applications.
+          **macOS** — download the `.dmg` for your Mac (`aarch64` for Apple
+          Silicon, `x86_64` for Intel) and drag rbsync to Applications.
+
+          **Windows** — download the `-setup.exe` installer and run it.
 
           **The app is not signed**, so macOS will say it "is damaged and can't
           be opened". It is not damaged; that is what macOS reports for unsigned
@@ -144,6 +225,15 @@ jobs:
           ```bash
           xattr -dr com.apple.quarantine /Applications/rbsync.app
           ```
+
+          Windows builds are unsigned too, so SmartScreen shows "Windows
+          protected your PC". Choose **More info → Run anyway**.
+
+          ## First run
+
+          Spotify requires every app to be registered, so you supply your own
+          free Client ID once — the app walks you through it, and it takes about
+          three minutes. Nothing is baked into these builds.
 
           ## Before you sync
 
@@ -161,7 +251,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          FILES=$(find artifacts -name '*.dmg' 2>/dev/null || true)
+          FILES=$(find artifacts \( -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) 2>/dev/null || true)
           if [ -z "$FILES" ]; then
             echo "no bundles were produced; refusing to publish an empty release"
             exit 1

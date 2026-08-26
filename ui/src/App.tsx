@@ -220,7 +220,7 @@ export default function App() {
       setPlaylists([]);
     });
 
-  const saveSettings = (patch: Partial<Settings>) =>
+  const saveSettings = (patch: Partial<Settings>): Promise<void> =>
     run("Saving settings", async () => {
       const updated = await rpc.call<Settings>(
         "settings.set",
@@ -429,10 +429,13 @@ export default function App() {
 
       {!connected && status !== null ? (
         <ConnectPanel
-          clientIdSet={Boolean(status.client_id_set)}
+          clientId={settings?.clientId ?? ""}
           busy={busy !== null}
           onConnect={connectSpotify}
-          onSettings={() => setShowSettings(true)}
+          onSaveClientId={(clientId) => {
+            // Saving the id is what unlocks sign-in, so do both in one gesture.
+            void saveSettings({ clientId }).then(() => connectSpotify());
+          }}
         />
       ) : (
       <main className="main">

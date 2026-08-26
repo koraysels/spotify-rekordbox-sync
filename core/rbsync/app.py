@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import ntpath
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,7 @@ SETTING_ONLY_SYNCABLE = "only_syncable"
 # Where macOS mounts external drives. Paths beneath a directory here belong to a
 # volume that may simply not be plugged in.
 VOLUME_PREFIX = "/Volumes"
+IS_WINDOWS = os.name == "nt"
 
 
 @dataclass(slots=True)
@@ -454,7 +456,22 @@ class AppService:
 
     @staticmethod
     def _volume_of(path: str) -> str:
-        """The mount point a path belongs to, or empty for the internal disk."""
+        """The mount point a path belongs to, or empty for the internal disk.
+
+        macOS mounts external drives under /Volumes. Windows gives every drive
+        its own letter, so the drive root is the volume — a drive that is not
+        plugged in is simply a letter that no longer resolves.
+        """
+        if IS_WINDOWS:
+            # ntpath rather than os.path: os.path is posixpath when this runs on
+            # a Mac, and posixpath does not recognise drive letters at all.
+            drive, _ = ntpath.splitdrive(path.replace("/", "\\"))
+            if not drive:
+                return ""
+            # A UNC share ("\\\\nas\\music") is its own volume; a drive letter
+            # needs the trailing separator to name the root.
+            return drive if drive.startswith("\\\\") else f"{drive}\\"
+
         prefix = VOLUME_PREFIX.rstrip("/") + "/"
         if not path.startswith(prefix):
             return ""

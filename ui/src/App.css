@@ -993,3 +993,84 @@ button.big {
   margin-right: auto;
   padding-left: 16px;
 }
+
+.connect-card.setup {
+  max-width: 560px;
+  text-align: left;
+}
+
+.connect-card.setup h1 {
+  text-align: center;
+}
+
+.steps {
+  margin: 0 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+  /* Grid display on the items removes the native marker, so the numbers are
+     drawn from a counter instead. */
+  counter-reset: step;
+  list-style: none;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 10px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.steps li::before {
+  counter-increment: step;
+  content: counter(step);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.steps strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.redirect {
+  display: block;
+  margin: 6px 0;
+  padding: 6px 9px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.setup-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.setup-field span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.connect-card.setup button.big {
+  width: 100%;
+  justify-content: center;
+}

@@ -17,6 +17,7 @@ Three rules are enforced here rather than left to callers:
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from contextlib import contextmanager
 from datetime import datetime
@@ -29,6 +30,8 @@ from pyrekordbox.config import get_config
 from .models import LocalTrack, RbPlaylist
 
 log = logging.getLogger(__name__)
+
+IS_WINDOWS = os.name == "nt"
 
 SPOTIFY_FOLDER = "Spotify"
 BACKUP_PREFIX = "master_"
@@ -89,10 +92,20 @@ def default_database_path() -> Path:
             continue
         if path and Path(path).exists():
             return Path(path)
-    fallback = Path.home() / "Library" / "Pioneer" / "rekordbox" / "master.db"
-    if fallback.exists():
-        return fallback
+    for fallback in _fallback_database_paths():
+        if fallback.exists():
+            return fallback
     raise DatabaseNotFound("could not locate rekordbox master.db")
+
+
+def _fallback_database_paths() -> list[Path]:
+    """Where rekordbox keeps its database when pyrekordbox cannot say."""
+    if IS_WINDOWS:
+        appdata = os.environ.get("APPDATA")
+        roots = [Path(appdata)] if appdata else []
+        roots.append(Path.home() / "AppData" / "Roaming")
+        return [root / "Pioneer" / "rekordbox" / "master.db" for root in roots]
+    return [Path.home() / "Library" / "Pioneer" / "rekordbox" / "master.db"]
 
 
 def backup_database(db_path: str | Path, backup_dir: str | Path) -> Path:

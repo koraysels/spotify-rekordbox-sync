@@ -9,12 +9,33 @@ VENV="$HERE/.venv"
 TRIPLE="$(rustc -Vv | awk '/^host:/ {print $2}')"
 OUT_DIR="$ROOT/ui/src-tauri/binaries"
 
-if [ ! -x "$VENV/bin/python" ]; then
-  echo "creating virtualenv"
-  uv venv "$VENV" --python 3.12
+# Tauri looks for the sidecar under its target triple, and on Windows the
+# executable must keep its .exe suffix or the bundle will not find it.
+case "$TRIPLE" in
+  *windows*) EXE_SUFFIX=".exe" ;;
+  *)         EXE_SUFFIX="" ;;
+esac
+
+# Windows virtualenvs put executables in Scripts/ rather than bin/.
+if [ -d "$VENV/Scripts" ]; then
+  VENV_BIN="$VENV/Scripts"
+  PY="$VENV_BIN/python.exe"
+else
+  VENV_BIN="$VENV/bin"
+  PY="$VENV_BIN/python"
 fi
 
-uv pip install --python "$VENV/bin/python" -q -e "$HERE" pyinstaller
+if [ ! -e "$PY" ]; then
+  echo "creating virtualenv"
+  uv venv "$VENV" --python 3.12
+  if [ -d "$VENV/Scripts" ]; then
+    VENV_BIN="$VENV/Scripts"; PY="$VENV_BIN/python.exe"
+  else
+    VENV_BIN="$VENV/bin"; PY="$VENV_BIN/python"
+  fi
+fi
+
+uv pip install --python "$PY" -q -e "$HERE" pyinstaller
 
 cd "$HERE"
 
@@ -41,7 +62,7 @@ else
   echo "no RBSYNC_SPOTIFY_CLIENT_ID set - users must supply their own Client ID"
 fi
 
-"$VENV/bin/pyinstaller" \
+"$VENV_BIN/pyinstaller" \
   --noconfirm --clean --onefile \
   --name rbsync-core \
   --distpath "$HERE/dist" \
@@ -54,6 +75,6 @@ fi
   sidecar.py
 
 mkdir -p "$OUT_DIR"
-cp "$HERE/dist/rbsync-core" "$OUT_DIR/rbsync-core-$TRIPLE"
-chmod +x "$OUT_DIR/rbsync-core-$TRIPLE"
-echo "sidecar ready: $OUT_DIR/rbsync-core-$TRIPLE"
+cp "$HERE/dist/rbsync-core$EXE_SUFFIX" "$OUT_DIR/rbsync-core-$TRIPLE$EXE_SUFFIX"
+chmod +x "$OUT_DIR/rbsync-core-$TRIPLE$EXE_SUFFIX" 2>/dev/null || true
+echo "sidecar ready: $OUT_DIR/rbsync-core-$TRIPLE$EXE_SUFFIX"
