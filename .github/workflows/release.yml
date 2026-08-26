@@ -18,14 +18,20 @@ jobs:
   macos:
     name: macOS (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    # Apple Silicon is the build that must succeed. Intel is best-effort:
+    # GitHub retired the macos-13 runners, and a queued or missing Intel
+    # runner must never hold up a release.
+    continue-on-error: ${{ matrix.optional }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: aarch64
             runner: macos-14
+            optional: false
           - arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
+            optional: true
     steps:
       - uses: actions/checkout@v4
 
@@ -107,6 +113,9 @@ jobs:
   publish:
     name: Publish release
     needs: macos
+    # Runs even if the optional Intel leg never produced anything, so long as
+    # something was built.
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -114,6 +123,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: Resolve version
         id: version
@@ -151,7 +161,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          FILES=$(find artifacts -name '*.dmg')
+          FILES=$(find artifacts -name '*.dmg' 2>/dev/null || true)
+          if [ -z "$FILES" ]; then
+            echo "no bundles were produced; refusing to publish an empty release"
+            exit 1
+          fi
           echo "publishing: $FILES"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" $FILES --clobber
