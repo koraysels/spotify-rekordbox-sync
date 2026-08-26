@@ -35,6 +35,20 @@ the same reason; choose **More info → Run anyway**.
 From a checkout, `./install.sh` builds nothing but copies a locally built app to
 Applications and clears quarantine for you.
 
+## Updates
+
+The app checks for a new release on launch and offers it in a banner. Nothing is
+downloaded until you press **update now**, and it only restarts when you say so.
+
+Every update is signature-verified against a key built into the app. An
+auto-updater is a remote code execution channel into every install, so an
+artifact that cannot be signed is skipped rather than published — a release with
+no valid signature simply offers no update.
+
+The signing key lives in repository secrets and is never committed. For local
+builds it is read from `~/.rbsync/updater.key`; `scripts/build-app.sh` picks it
+up and tells you how to generate one if it is missing.
+
 ## First run: connect Spotify
 
 Spotify requires every application to be registered, so its login page knows
@@ -69,18 +83,20 @@ people to your app, or have each of them make their own.
 ## Syncing
 
 1. **Quit rekordbox.** The app refuses to write while it is running.
-2. Open rbsync. Press **Sync…** (bottom left) for the overview: your Spotify
-   playlists on the left, rekordbox's `Spotify` folder on the right.
+2. Open rbsync and press **Sync…** (bottom left). That opens a separate window:
+   your Spotify playlists on the left, your whole rekordbox playlist tree on the
+   right, folders and all.
 3. Tick the playlists you want. Nothing is selected by default.
-4. **Plan sync** — fetches the playlists and matches every track. Nothing is
-   written yet.
-5. Review anything amber in the **Tracks** view. Decisions are remembered, so
-   each track is only ever asked about once.
-6. **Apply to rekordbox.** A dialog reports progress, then exactly what was
-   written and where the backup went.
-7. Open rekordbox and look in the `Spotify` folder.
+4. **Import into rekordbox.** It matches every track and writes the results in
+   one action, then reports exactly what landed and where the backup went.
+5. Open rekordbox and look in the `Spotify` folder.
 
-Your selection persists, so a repeat sync is: open, Plan, Apply.
+Your selection persists, so a repeat sync is: open, Import.
+
+The left column breaks each playlist down as **matched · review · missing** over
+the Spotify total, so `5 · 1 · 5 / 11` means five found, one waiting on your
+decision, five you do not own. Review decisions live in the **Tracks** view and
+are remembered, so a track is only ever asked about once.
 
 ## Safety
 
@@ -134,8 +150,11 @@ Score combines normalized title similarity (55%), artist overlap (30%) and
 duration proximity (15%). Two rules override it:
 
 - **Matching ISRCs accept immediately.**
-- **A duration gap over 30 seconds rejects outright** — this is what stops a
-  radio edit being swapped for an extended mix in a live set.
+- **A duration gap over 30 seconds never auto-accepts** — this is what stops a
+  radio edit being swapped for an extended mix in a live set. When the names and
+  artist match, though, the longer copy is still offered for review rather than
+  discarded: owning the extended mix of a track Spotify lists at radio length is
+  the normal case for a DJ, and reporting it as "you do not own this" was wrong.
 
 Titles are normalized against what real libraries contain: `(Original Version)`,
 `(OFFICIAL SONG)`, `[Prod. By …]`, `feat.` clauses, leading track numbers and
@@ -264,9 +283,15 @@ not leave it running.
 ### Building the app
 
 ```bash
-./core/build_sidecar.sh
-cd ui && npm run tauri build
+./scripts/build-app.sh   # freezes the core, then bundles with Tauri
+./install.sh             # copies to /Applications and makes it launchable
 ```
+
+`install.sh` does three things, and all three matter: `ditto` (rather than
+`cp -R`, which can drop the metadata a code signature depends on), clears the
+macOS quarantine flag, and re-signs ad-hoc. Without a valid signature macOS
+reports the app as "damaged" and kills it *and its sidecar* on launch — clearing
+quarantine alone does not fix that.
 
 **Requires Rust 1.88 or newer.** Tauri's dependency tree will not compile on
 older toolchains.
@@ -284,9 +309,9 @@ git commit -am "chore: version 0.2.0"
 git tag v0.2.0 && git push origin main v0.2.0
 ```
 
-The workflow runs the test suite, freezes the Python core, and builds macOS
-(Apple Silicon and Intel) and Windows bundles, then publishes them to a GitHub
-release with install instructions. Intel is best-effort — GitHub retired the
+The workflow runs the test suite, freezes the Python core, builds macOS (Apple
+Silicon and Intel) and Windows bundles, signs the update payloads, generates
+`latest.json`, and publishes the lot to a GitHub release. Intel is best-effort — GitHub retired the
 `macos-13` runners, so a missing Intel runner never blocks a release — but the
 job refuses to publish an empty one.
 
@@ -314,9 +339,13 @@ because the sidecar stays alive for the session.
 
 ## Status
 
-Working: playlist selection and browsing, matching with review and bulk actions,
-playlist writes, coverage, wantlist export, file availability checks, sync
-history, backups with restore.
+Working and used against a real 12,000-track library: playlist selection and
+browsing, matching with review and bulk actions, playlist writes, coverage
+reporting, wantlist export, file-availability checks, sync history, backups with
+restore, playlist-tree repair, and in-app updates on macOS and Windows.
 
 Not built yet: importing new audio files into the rekordbox collection, and
 assisted downloading of wantlist tracks.
+
+Untested: the Windows build has been produced and installed by CI but never run
+by a person — treat it as unproven until someone opens it.
