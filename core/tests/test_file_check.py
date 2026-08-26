@@ -42,6 +42,9 @@ class TestVolumeAwareness:
     def test_path_on_an_unmounted_volume_is_offline(self, service, monkeypatch):
         from rbsync.matcher import TrackIndex
 
+        # /Volumes is macOS semantics; pin it so the test means the same thing
+        # when the suite runs on a Windows machine.
+        monkeypatch.setattr("rbsync.app.IS_WINDOWS", False)
         service._index = TrackIndex([
             LocalTrack(id="ext", title="T", artist="A", length_seconds=200,
                        folder_path="/Volumes/NOT MOUNTED/music/t.mp3")
@@ -50,9 +53,10 @@ class TestVolumeAwareness:
         assert result["status"] == "offline"
         assert result["volume"] == "/Volumes/NOT MOUNTED"
 
-    def test_offline_is_not_reported_as_existing(self, service):
+    def test_offline_is_not_reported_as_existing(self, service, monkeypatch):
         from rbsync.matcher import TrackIndex
 
+        monkeypatch.setattr("rbsync.app.IS_WINDOWS", False)
         service._index = TrackIndex([
             LocalTrack(id="ext", title="T", artist="A", length_seconds=200,
                        folder_path="/Volumes/NOT MOUNTED/music/t.mp3")
@@ -122,9 +126,10 @@ class TestLibraryHealth:
         assert health["unknown"] == 1
         assert health["total"] == 3
 
-    def test_groups_offline_tracks_by_volume(self, service):
+    def test_groups_offline_tracks_by_volume(self, service, monkeypatch):
         from rbsync.matcher import TrackIndex
 
+        monkeypatch.setattr("rbsync.app.IS_WINDOWS", False)
         service._index = TrackIndex([
             LocalTrack(id="a", title="A", artist="A", length_seconds=1,
                        folder_path="/Volumes/BIG DRIVE/x.mp3"),
@@ -138,9 +143,10 @@ class TestLibraryHealth:
         by_volume = {v["volume"]: v["count"] for v in health["volumes"]}
         assert by_volume == {"/Volumes/BIG DRIVE": 2, "/Volumes/OTHER": 1}
 
-    def test_volumes_are_sorted_by_size(self, service):
+    def test_volumes_are_sorted_by_size(self, service, monkeypatch):
         from rbsync.matcher import TrackIndex
 
+        monkeypatch.setattr("rbsync.app.IS_WINDOWS", False)
         service._index = TrackIndex([
             LocalTrack(id="a", title="A", artist="A", length_seconds=1,
                        folder_path="/Volumes/SMALL/x.mp3"),
