@@ -221,20 +221,28 @@ The cost is about 1.7 seconds of startup while the bundle unpacks. That is paid
 once when the app launches, because the sidecar process stays alive for the whole
 session, not per request.
 
-## Sharing the build with friends
+## Installing
 
-The produced `.dmg` is **unsigned and un-notarized**. macOS will refuse to open
-it with "rbsync is damaged and can't be opened" — that message is about the
-missing signature, not a corrupt file. Until the app is signed with an Apple
-Developer ID and notarized, whoever installs it has to clear the quarantine
-attribute once:
+```bash
+./install.sh
+```
+
+That copies the app to `/Applications` and clears the macOS quarantine flag.
+
+The build is **not signed** with an Apple Developer ID, so without that step
+macOS says "rbsync is damaged and can't be opened". The file is not damaged —
+that is simply what macOS reports for unsigned apps. The installer runs:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/rbsync.app
 ```
 
-Proper signing needs a paid Apple Developer account. Everything else about the
-build already works.
+Anyone you share the `.dmg` with has to do the same. They can mount the DMG and
+run `install.sh` from this repo, or run the `xattr` line themselves after
+dragging the app to Applications.
+
+Signing properly would remove the step, but needs a paid Apple Developer
+account.
 
 ## Status
 
