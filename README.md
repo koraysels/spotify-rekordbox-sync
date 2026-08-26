@@ -273,10 +273,15 @@ older toolchains.
 
 ## Releases
 
-Tag a commit:
+Bump the version in the repo first, then tag it. The workflow also stamps the
+version from the tag inside the runner, but that stamp is never committed back —
+so without bumping here, local builds keep reporting the old number while
+releases climb.
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+./scripts/set-version.sh 0.2.0
+git commit -am "chore: version 0.2.0"
+git tag v0.2.0 && git push origin main v0.2.0
 ```
 
 The workflow runs the test suite, freezes the Python core, and builds macOS
