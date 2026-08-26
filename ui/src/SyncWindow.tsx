@@ -4,6 +4,8 @@ import "./App.css";
 import { ApplyDialog, type ApplyState } from "./components/ApplyDialog";
 import { Banner } from "./components/Banner";
 import { SyncView } from "./components/SyncView";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
 import { callViaMainWindow, onMainWindowProgress } from "./bridge";
 import { revealPath } from "./reveal";
 import type { ApplyResult, Playlist, PlaylistPlan, Status, SyncPlan } from "./types";
@@ -65,32 +67,34 @@ export default function SyncWindow() {
     void callViaMainWindow("playlists.setSelected", { playlistIds: [...ids] });
   };
 
-  const plan = async () => {
-    setBusy("Planning");
+  /**
+   * Match the selected playlists and write them, in one action.
+   *
+   * The plan is still computed first and still decides what gets written —
+   * review-band tracks are never added without a decision — but it is no longer
+   * a separate button to press.
+   */
+  const importIntoRekordbox = async () => {
     setError(null);
+    setBusy("Matching your playlists");
+    setApplyState({
+      phase: "running",
+      message: "Matching your playlists",
+      results: [],
+      error: null,
+    });
     try {
       if (!status?.tracks_indexed) await callViaMainWindow("library.load");
-      const result = await callViaMainWindow<SyncPlan>("sync.plan", {
+      const planned = await callViaMainWindow<SyncPlan>("sync.plan", {
         playlistIds: [...selected],
         force: true,
       });
       const map = new Map<string, PlaylistPlan>();
-      result.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
+      planned.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
       setPlans(map);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(null);
-    }
-  };
 
-  const apply = async () => {
-    setApplyState({ phase: "running", message: "Checking that rekordbox is closed", results: [], error: null });
-    setBusy("Writing to rekordbox");
-    try {
       const result = await callViaMainWindow<{ results: ApplyResult[] }>("sync.apply");
       setApplyState({ phase: "done", message: "", results: result.results, error: null });
-      setPlans(new Map());
       setLibraryVersion((current) => current + 1);
       void refresh();
     } catch (cause) {
@@ -101,11 +105,10 @@ export default function SyncWindow() {
         error: cause instanceof Error ? cause.message : String(cause),
       });
     } finally {
-      // Progress events only ever set the message; without this the button
-      // stays on "Working…" forever once the last event has arrived.
       setBusy(null);
     }
   };
+
 
   return (
     <div className="app syncwindow">
@@ -124,8 +127,8 @@ export default function SyncWindow() {
         onToggle={toggle}
         onSelectAll={() => persist(new Set(playlists.map((p) => p.id)))}
         onSelectNone={() => persist(new Set())}
-        onPlan={plan}
-        onApply={apply}
+        onImport={importIntoRekordbox}
+        onClose={() => void getCurrentWindow().close()}
         refreshKey={libraryVersion}
       />
 

@@ -72,8 +72,8 @@ interface Props {
   onToggle: (id: string) => void;
   onSelectAll: () => void;
   onSelectNone: () => void;
-  onPlan: () => void;
-  onApply: () => void;
+  onImport: () => void;
+  onClose?: () => void;
   refreshKey: number;
 }
 
@@ -94,8 +94,8 @@ export function SyncView({
   onToggle,
   onSelectAll,
   onSelectNone,
-  onPlan,
-  onApply,
+  onImport,
+  onClose,
   refreshKey,
 }: Props) {
   const [rbNodes, setRbNodes] = useState<RbNode[] | null>(null);
@@ -252,23 +252,25 @@ export function SyncView({
         <div className="syncmiddle-actions">
           <button
             className="primary big"
-            disabled={selected.size === 0 || busy}
-            onClick={onPlan}
-          >
-            {busy ? <Spinner size={14} label="Working…" /> : `Plan sync (${selected.size})`}
-          </button>
-          <button
-            className="danger big"
-            disabled={!hasPlan || busy || rekordboxRunning}
-            onClick={onApply}
+            disabled={selected.size === 0 || busy || rekordboxRunning}
+            onClick={onImport}
             title={
               rekordboxRunning
                 ? "Quit rekordbox before writing to your library."
-                : "Write the previewed changes into rekordbox"
+                : "Match these playlists and write them into rekordbox"
             }
           >
-            Apply to rekordbox
+            {busy ? (
+              <Spinner size={14} label="Working…" />
+            ) : (
+              `Import into rekordbox (${selected.size})`
+            )}
           </button>
+          {onClose && (
+            <button className="ghost big" disabled={busy} onClick={onClose}>
+              Close
+            </button>
+          )}
           {rekordboxRunning && (
             <p className="hint warn">Quit rekordbox first — it must be closed to write.</p>
           )}

@@ -249,7 +249,11 @@ export default function App() {
       plan.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
       setPlans(map);
       setCoverage(plan.coverage);
-      setActivePlaylist(plan.playlists[0]?.playlist.id ?? null);
+      // Stay on the playlist being looked at; jumping to the first one loses
+      // your place every time you re-plan.
+      setActivePlaylist((current) =>
+        current && map.has(current) ? current : plan.playlists[0]?.playlist.id ?? null,
+      );
       setRowSelection(new Set());
       setStaleIds(new Set());
     });

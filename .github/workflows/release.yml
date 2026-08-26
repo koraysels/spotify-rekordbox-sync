@@ -133,7 +133,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
-          path: dist/*.dmg
+          # dist/* rather than dist/*.dmg: the updater tarball and its signature
+          # live here too, and dropping them publishes a release the app cannot
+          # update from.
+          path: dist/*
 
   windows:
     name: Windows (x86_64)
