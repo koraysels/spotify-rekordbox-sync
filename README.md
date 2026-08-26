@@ -102,6 +102,24 @@ originals. **change** on any row opens every candidate the matcher considered,
 with its file, length, bitrate and score, and lets you pick one. That choice is
 remembered and overrides the ranking on every future sync.
 
+## Plans are remembered
+
+Planning fetches every selected playlist from Spotify and matches each track
+against the whole collection, so the result is stored locally and restored when
+you reopen the app — no waiting to see where you left off.
+
+A stored plan is discarded and recomputed whenever anything that would change
+its outcome changes:
+
+- the playlist was edited on Spotify (its `snapshot_id` moved)
+- the match thresholds or the removals setting changed
+- you accepted or rejected a match
+- the size of your rekordbox collection changed
+- you applied a sync, which changes the library itself
+
+When a restored plan is out of date, its coverage is greyed out with a `*` and
+the tooltip says why. **Plan sync** always recomputes from scratch.
+
 ## History and backups
 
 Every Apply is recorded: which playlist, how many tracks added and removed,

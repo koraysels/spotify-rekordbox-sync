@@ -118,3 +118,14 @@ class TestHistoryApi:
         entries = call(server, "history.list", {"playlistId": "pl2"})["result"]["entries"]
         assert len(entries) == 1
         assert entries[0]["playlistId"] == "pl2"
+
+
+class TestCachedPlansApi:
+    def test_no_stored_plans_is_empty_not_an_error(self, server):
+        result = call(server, "plans.cached", {"playlistIds": ["nope"]})["result"]
+        assert result["playlists"] == []
+        assert result["stored"] == {}
+
+    def test_wantlist_text_is_available_for_copying(self, server):
+        result = call(server, "wantlist.get")["result"]
+        assert "text" in result

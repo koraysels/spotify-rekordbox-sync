@@ -176,6 +176,11 @@
   color: var(--danger);
 }
 
+/* Restored from storage, but something changed since it was computed. */
+.coverage.stale {
+  color: var(--muted);
+}
+
 /* --- tracks --- */
 
 .tracks {
@@ -673,4 +678,31 @@ button.big {
   flex-direction: column;
   align-items: center;
   gap: 14px;
+}
+
+.wantlist-banner {
+  gap: 16px;
+}
+
+.wantlist-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wantlist-error {
+  color: var(--danger);
+}
+
+.wantlist-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* The banner sits above the table, so its tooltips point downwards. */
+.wantlist-actions .chip[data-tip]:hover::after {
+  bottom: auto;
+  top: calc(100% + 6px);
 }

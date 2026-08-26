@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -12,9 +12,11 @@ import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
+import { WantlistBanner } from "./components/WantlistBanner";
 import { TrackTable, type BandFilter, type BrowseState } from "./components/TrackTable";
 import type {
   ApplyResult,
+  CachedPlans,
   Playlist,
   SpotifyTrack,
   PlaylistPlan,
@@ -43,6 +45,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [picking, setPicking] = useState<TrackPlan | null>(null);
+  const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
+  const [wantlist, setWantlist] = useState<
+    { path: string; text: string; count: number } | null
+  >(null);
   const [browse, setBrowse] = useState<Map<string, BrowseState>>(new Map());
 
   const [bandFilter, setBandFilter] = useState<BandFilter>("all");
@@ -96,6 +102,44 @@ export default function App() {
   useEffect(() => {
     if (status?.authenticated && playlists.length === 0) void loadPlaylists();
   }, [status?.authenticated, playlists.length, loadPlaylists]);
+
+  const restoredFor = useRef<string | null>(null);
+
+  // Show the last computed plan immediately on launch, rather than making the
+  // user re-plan. Anything that changed since is flagged rather than hidden.
+  useEffect(() => {
+    if (playlists.length === 0 || selected.size === 0) return;
+    const key = [...selected].sort().join(",");
+    if (restoredFor.current === key) return;
+    restoredFor.current = key;
+
+    void (async () => {
+      try {
+        const result = await rpc.call<CachedPlans>("plans.cached", {
+          playlistIds: [...selected],
+        });
+        if (result.playlists.length === 0) return;
+
+        const map = new Map<string, PlaylistPlan>();
+        result.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
+        setPlans(map);
+        setCoverage(result.coverage);
+        setActivePlaylist((current) => current ?? result.playlists[0].playlist.id);
+
+        const byId = new Map(playlists.map((p) => [p.id, p]));
+        const stale = new Set<string>();
+        for (const [playlistId, info] of Object.entries(result.stored ?? {})) {
+          const live = byId.get(playlistId);
+          if (!info.fingerprintMatches || (live && live.snapshotId !== info.snapshotId)) {
+            stale.add(playlistId);
+          }
+        }
+        setStaleIds(stale);
+      } catch {
+        // A missing or unreadable stored plan is not worth surfacing.
+      }
+    })();
+  }, [playlists, selected]);
 
   const persistSelection = useCallback(
     (next: Set<string>) => {
@@ -160,13 +204,17 @@ export default function App() {
   const planSync = () =>
     run("Planning", async () => {
       if (!status?.tracks_indexed) await rpc.call("library.load");
-      const plan = await rpc.call<SyncPlan>("sync.plan", { playlistIds: [...selected] });
+      const plan = await rpc.call<SyncPlan>("sync.plan", {
+        playlistIds: [...selected],
+        force: true,
+      });
       const map = new Map<string, PlaylistPlan>();
       plan.playlists.forEach((entry) => map.set(entry.playlist.id, entry));
       setPlans(map);
       setCoverage(plan.coverage);
       setActivePlaylist(plan.playlists[0]?.playlist.id ?? null);
       setRowSelection(new Set());
+      setStaleIds(new Set());
     });
 
   const applySync = () =>
@@ -180,12 +228,21 @@ export default function App() {
       );
       setPlans(new Map());
       setCoverage(null);
+      setStaleIds(new Set());
+      restoredFor.current = null;
     });
 
   const exportWantlist = () =>
     run("Exporting", async () => {
-      const result = await rpc.call<{ path: string }>("wantlist.export");
-      setNotice(`Wantlist written to ${result.path}`);
+      const result = await rpc.call<{ path: string; paths: string[] }>("wantlist.export");
+      const contents = await rpc.call<{ rows: unknown[]; text: string }>("wantlist.get");
+      setWantlist({
+        // Prefer the plain-text export for "show in Finder"; it is the one
+        // people paste into a search tool.
+        path: result.paths?.find((p) => p.endsWith(".txt")) ?? result.path,
+        text: contents.text,
+        count: contents.rows.length,
+      });
     });
 
   const replan = useCallback(async () => {
@@ -290,6 +347,14 @@ export default function App() {
       {status?.rekordbox_running && (
         <Banner tone="warn" message="Rekordbox is running. Quit it completely before applying changes." />
       )}
+      {wantlist && (
+        <WantlistBanner
+          path={wantlist.path}
+          text={wantlist.text}
+          count={wantlist.count}
+          onDismiss={() => setWantlist(null)}
+        />
+      )}
       {error && <Banner tone="error" message={error} onDismiss={() => setError(null)} />}
       {notice && <Banner tone="info" message={notice} onDismiss={() => setNotice(null)} />}
 
@@ -314,6 +379,7 @@ export default function App() {
           filter={playlistFilter}
           onFilter={setPlaylistFilter}
           loading={busy !== null}
+          staleIds={staleIds}
         />
         <TrackTable
           plan={activePlan}

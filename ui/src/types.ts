@@ -109,3 +109,15 @@ export interface HistoryEntry {
   syncedAt: string;
   backupPath: string;
 }
+
+export interface StoredPlanInfo {
+  snapshotId: string;
+  createdAt: string;
+  fingerprintMatches: boolean;
+}
+
+export interface CachedPlans {
+  playlists: PlaylistPlan[];
+  coverage: Coverage;
+  stored: Record<string, StoredPlanInfo>;
+}

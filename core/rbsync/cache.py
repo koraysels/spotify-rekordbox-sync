@@ -11,13 +11,14 @@ only one that involves clicking.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,15 @@ class Decision:
     content_id: str
     accepted: bool
     decided_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPlan:
+    playlist_id: str
+    snapshot_id: str
+    fingerprint: str
+    payload: dict
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +126,13 @@ class Cache:
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS plans (
+                playlist_id TEXT PRIMARY KEY,
+                snapshot_id TEXT NOT NULL,
+                fingerprint TEXT NOT NULL,
+                payload     TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
             """
         )
 
@@ -154,6 +171,18 @@ class Cache:
             accepted=bool(row["accepted"]),
             decided_at=row["decided_at"],
         )
+
+    def decisions_marker(self) -> str:
+        """A value that changes whenever any decision is added or altered.
+
+        Used to invalidate stored plans: a plan computed before the user
+        accepted or rejected a match no longer reflects what would be written.
+        """
+        with self._lock:
+            row = self._db.execute(
+                "SELECT COUNT(*) AS n, COALESCE(MAX(decided_at), '') AS latest FROM decisions"
+            ).fetchone()
+        return f"{row['n']}:{row['latest']}"
 
     def forget_decision(self, spotify_id: str) -> None:
         with self._lock:
@@ -242,6 +271,56 @@ class Cache:
         if row is None:
             return None
         return self._entry(row)
+
+    # --- plans -------------------------------------------------------------
+
+    def save_plan(self, playlist_id: str, *, snapshot_id: str, fingerprint: str,
+                  payload: dict) -> None:
+        """Store a computed plan so the next launch does not have to redo it."""
+        with self._lock:
+            self._db.execute(
+                """
+                INSERT INTO plans (playlist_id, snapshot_id, fingerprint, payload, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(playlist_id) DO UPDATE SET
+                    snapshot_id = excluded.snapshot_id,
+                    fingerprint = excluded.fingerprint,
+                    payload     = excluded.payload,
+                    created_at  = excluded.created_at
+                """,
+                (playlist_id, snapshot_id, fingerprint, json.dumps(payload), _now()),
+            )
+            self._db.commit()
+
+    def get_plan(self, playlist_id: str) -> StoredPlan | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM plans WHERE playlist_id = ?", (playlist_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(row["payload"])
+        except ValueError:
+            # A corrupt payload is not worth crashing over; treat it as absent.
+            return None
+        return StoredPlan(
+            playlist_id=row["playlist_id"],
+            snapshot_id=row["snapshot_id"],
+            fingerprint=row["fingerprint"],
+            payload=payload,
+            created_at=row["created_at"],
+        )
+
+    def delete_plan(self, playlist_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM plans WHERE playlist_id = ?", (playlist_id,))
+            self._db.commit()
+
+    def clear_plans(self) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM plans")
+            self._db.commit()
 
     # --- settings ----------------------------------------------------------
 

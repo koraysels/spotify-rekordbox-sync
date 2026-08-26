@@ -26,6 +26,7 @@ from .rekordbox import (
     is_rekordbox_running,
 )
 from .spotify import PlaylistAccessDenied, SpotifyClient, Tokens, refresh
+from .persist import plan_from_json, plan_to_json
 from .sync import PlaylistPlan, SyncPlan, plan_playlist, wantlist_rows, wantlist_text
 from .tokens import TokenStore
 
@@ -158,10 +159,64 @@ class AppService:
         finally:
             client.close()
 
+    # --- plan caching ------------------------------------------------------
+
+    def plan_fingerprint(self) -> str:
+        """Identifies everything a plan's outcome depends on, except the playlist.
+
+        If any of these change, a stored plan could write something different
+        from what it says, so it must be recomputed rather than reused.
+        """
+        config = self.match_config()
+        return ":".join(
+            [
+                str(self._track_count),
+                f"{config.auto_accept:.4f}",
+                f"{config.reject:.4f}",
+                "1" if self.allow_removals() else "0",
+                self.cache.decisions_marker(),
+            ]
+        )
+
+    def cached_plans(self, playlist_ids: list[str]) -> list[PlaylistPlan]:
+        """Stored plans for these playlists, without touching the network."""
+        plans: list[PlaylistPlan] = []
+        for playlist_id in playlist_ids:
+            stored = self.cache.get_plan(playlist_id)
+            if stored is None:
+                continue
+            try:
+                plans.append(plan_from_json(stored.payload))
+            except Exception:  # noqa: BLE001 - a bad payload is just a cache miss
+                log.warning("discarding unreadable stored plan for %s", playlist_id)
+                self.cache.delete_plan(playlist_id)
+        return plans
+
+    def stored_plan_state(self, playlist_ids: list[str]) -> dict[str, dict]:
+        """Per-playlist metadata about what is stored, for the UI to show."""
+        state: dict[str, dict] = {}
+        fingerprint = self.plan_fingerprint()
+        for playlist_id in playlist_ids:
+            stored = self.cache.get_plan(playlist_id)
+            if stored is None:
+                continue
+            state[playlist_id] = {
+                "snapshotId": stored.snapshot_id,
+                "createdAt": stored.created_at,
+                "fingerprintMatches": stored.fingerprint == fingerprint,
+            }
+        return state
+
     # --- planning ----------------------------------------------------------
 
-    def plan(self, playlist_ids: list[str], progress=None) -> SyncPlan:
-        """Build a preview of what syncing the given playlists would do."""
+    def plan(self, playlist_ids: list[str], progress=None, force: bool = False) -> SyncPlan:
+        """Build a preview of what syncing the given playlists would do.
+
+        A plan stored from an earlier run is reused when nothing that affects
+        its outcome has changed: the playlist's Spotify snapshot, the match
+        settings, the recorded decisions and the size of the collection.
+        """
+        fingerprint = self.plan_fingerprint()
         client = self.spotify()
         try:
             all_playlists = {p.id: p for p in client.list_playlists()}
@@ -172,6 +227,23 @@ class AppService:
                     playlist = all_playlists.get(playlist_id)
                     if playlist is None:
                         continue
+
+                    if not force:
+                        stored = self.cache.get_plan(playlist_id)
+                        if (
+                            stored is not None
+                            and stored.fingerprint == fingerprint
+                            and stored.snapshot_id == (playlist.snapshot_id or "")
+                        ):
+                            if progress:
+                                progress(f"[{position}/{len(playlist_ids)}] {playlist.name} (stored)")
+                            try:
+                                plans.append(plan_from_json(stored.payload))
+                                continue
+                            except Exception:  # noqa: BLE001
+                                log.warning("stored plan unusable for %s", playlist_id)
+                                self.cache.delete_plan(playlist_id)
+
                     if progress:
                         progress(f"[{position}/{len(playlist_ids)}] {playlist.name}")
                     try:
@@ -186,13 +258,18 @@ class AppService:
                         target = library.find_playlist(playlist.name, parent_id=folder.id)
                         if target is not None:
                             existing = library.playlist_content_ids(target.id)
-                    plans.append(
-                        plan_playlist(
-                            playlist, tracks, self.index, self.cache, existing,
-                            config=self.match_config(),
-                            allow_removals=self.allow_removals(),
-                        )
+                    computed = plan_playlist(
+                        playlist, tracks, self.index, self.cache, existing,
+                        config=self.match_config(),
+                        allow_removals=self.allow_removals(),
                     )
+                    self.cache.save_plan(
+                        playlist_id,
+                        snapshot_id=playlist.snapshot_id or "",
+                        fingerprint=fingerprint,
+                        payload=plan_to_json(computed),
+                    )
+                    plans.append(computed)
             return SyncPlan(playlists=plans)
         finally:
             client.close()
@@ -231,6 +308,10 @@ class AppService:
                             backup_path=str(backup),
                         )
                     )
+
+        # Applying changes the rekordbox library, so every stored plan is now
+        # describing a state that no longer exists.
+        self.cache.clear_plans()
 
         for playlist_plan, result in zip(plan.playlists, results):
             self.cache.record_sync(

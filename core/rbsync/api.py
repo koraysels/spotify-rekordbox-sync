@@ -10,7 +10,7 @@ from .spotify import PlaylistAccessDenied
 from .rpc import RpcServer
 from .serialize import playlist_to_dict, sync_plan_to_dict, track_to_dict
 from .spotify import Tokens, build_authorize_url, exchange_code, make_verifier
-from .sync import wantlist_rows
+from .sync import SyncPlan, wantlist_rows, wantlist_text
 
 
 def build_server(service: AppService | None = None, out=None) -> RpcServer:
@@ -106,13 +106,27 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             client.close()
         return {"tracks": [track_to_dict(t) for t in tracks], "error": None}
 
-    def sync_plan(playlistIds=None, **_):
+    def sync_plan(playlistIds=None, force=False, **_):
         ids = list(playlistIds or service.cache.get_selected_playlists())
         if not ids:
             raise RuntimeError("No playlists selected. Choose playlists first.")
-        plan = service.plan(ids, progress=server.progress)
+        plan = service.plan(ids, progress=server.progress, force=bool(force))
         state["plan"] = plan
         return sync_plan_to_dict(plan)
+
+    def plans_cached(playlistIds=None, **_):
+        """Plans stored from an earlier run, loaded without any network access.
+
+        Lets the app show the last result immediately on launch instead of
+        making the user re-plan every time.
+        """
+        ids = list(playlistIds or service.cache.get_selected_playlists())
+        plans = service.cached_plans(ids)
+        state["plan"] = SyncPlan(playlists=plans) if plans else state.get("plan")
+        return {
+            **sync_plan_to_dict(SyncPlan(playlists=plans)),
+            "stored": service.stored_plan_state(ids),
+        }
 
     def sync_apply(**_):
         plan = state.get("plan")
@@ -158,8 +172,11 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
     def wantlist_get(**_):
         plan = state.get("plan")
         if plan is None:
-            return {"rows": []}
-        return {"rows": wantlist_rows(plan.playlists, deduplicate=True)}
+            return {"rows": [], "text": ""}
+        return {
+            "rows": wantlist_rows(plan.playlists, deduplicate=True),
+            "text": wantlist_text(plan.playlists),
+        }
 
     def wantlist_export(path=None, format="both", **_):
         # Validate the argument before the state check, so a bad format reports
@@ -194,6 +211,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("playlists.setSelected", playlists_set_selected),
         ("playlists.tracks", playlists_tracks),
         ("sync.plan", sync_plan),
+        ("plans.cached", plans_cached),
         ("sync.apply", sync_apply),
         ("review.decide", review_decide),
         ("history.list", history_list),

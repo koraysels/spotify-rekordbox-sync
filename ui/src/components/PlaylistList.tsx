@@ -13,6 +13,8 @@ interface Props {
   filter: string;
   onFilter: (value: string) => void;
   loading: boolean;
+  /** Playlists whose stored plan no longer reflects current state. */
+  staleIds: Set<string>;
 }
 
 export function PlaylistList({
@@ -27,6 +29,7 @@ export function PlaylistList({
   filter,
   onFilter,
   loading,
+  staleIds,
 }: Props) {
   const visible = playlists.filter((p) =>
     p.name.toLowerCase().includes(filter.toLowerCase()),
@@ -74,8 +77,20 @@ export function PlaylistList({
                   n/a
                 </span>
               ) : plan ? (
-                <span className={coverageTone(plan.coverage.percent)}>
+                <span
+                  className={
+                    staleIds.has(playlist.id)
+                      ? "coverage stale"
+                      : coverageTone(plan.coverage.percent)
+                  }
+                  title={
+                    staleIds.has(playlist.id)
+                      ? "This playlist or your settings changed since this plan was made. Press Plan sync to refresh it."
+                      : undefined
+                  }
+                >
                   {plan.coverage.percent}%
+                  {staleIds.has(playlist.id) ? " *" : ""}
                 </span>
               ) : (
                 <span className="count">{playlist.trackCount}</span>
