@@ -99,8 +99,14 @@ jobs:
           VERSION="${{ steps.version.outputs.number }}"
           ARCH="${{ matrix.arch }}"
           for dmg in ui/src-tauri/target/release/bundle/dmg/*.dmg; do
+            [ -e "$dmg" ] || continue
             cp "$dmg" "dist/rbsync_${VERSION}_macos_${ARCH}.dmg"
           done
+          if [ -z "$(ls -A dist)" ]; then
+            echo "no macOS bundles were produced; what tauri built was:"
+            find ui/src-tauri/target/release/bundle -maxdepth 2 -type d
+            exit 1
+          fi
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
@@ -182,6 +188,13 @@ jobs:
             [ -e "$msi" ] || continue
             cp "$msi" "dist/rbsync_${VERSION}_windows_x86_64.msi"
           done
+          # Fail loudly: a green job that produced nothing is worse than a red
+          # one, because the release publishes without ever mentioning Windows.
+          if [ -z "$(ls -A dist)" ]; then
+            echo "no Windows bundles were produced; what tauri built was:"
+            find ui/src-tauri/target/release/bundle -maxdepth 2 -type d
+            exit 1
+          fi
           ls -lh dist
 
       - uses: actions/upload-artifact@v4
