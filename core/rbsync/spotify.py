@@ -170,11 +170,16 @@ class SpotifyClient:
                         track_count=int(counts.get("total", 0) or 0),
                         owner=((item.get("owner") or {}).get("display_name") or ""),
                         owner_id=((item.get("owner") or {}).get("id") or ""),
+                        collaborative=bool(item.get("collaborative")),
                         snapshot_id=item.get("snapshot_id", "") or "",
                     )
                 )
             url = payload.get("next")
         return playlists
+
+    def current_user_id(self) -> str:
+        """The signed-in user's Spotify id, used to tell owned playlists apart."""
+        return str((self._transport.get(f"{API_BASE}/me") or {}).get("id") or "")
 
     def playlist_tracks(self, playlist_id: str) -> list[SpotifyTrack]:
         """Fetch a playlist's tracks.

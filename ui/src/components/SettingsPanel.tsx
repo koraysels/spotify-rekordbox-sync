@@ -22,6 +22,7 @@ export function SettingsPanel({
   const [autoAccept, setAutoAccept] = useState(settings.autoAccept);
   const [reject, setReject] = useState(settings.reject);
   const [allowRemovals, setAllowRemovals] = useState(settings.allowRemovals);
+  const [onlySyncable, setOnlySyncable] = useState(settings.onlySyncable);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -53,6 +54,23 @@ export function SettingsPanel({
               </button>
             )}
           </div>
+        </section>
+
+        <section>
+          <h3>Playlists</h3>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={onlySyncable}
+              onChange={(event) => setOnlySyncable(event.target.checked)}
+            />
+            Only show playlists I can sync
+          </label>
+          <p className="hint">
+            Spotify only shares the contents of playlists you own or collaborate on.
+            Playlists you merely follow cannot be read at all, so they are hidden. Turn
+            this off to list them anyway.
+          </p>
         </section>
 
         <section>
@@ -110,7 +128,7 @@ export function SettingsPanel({
           <button
             className="primary"
             onClick={() => {
-              onSave({ clientId, autoAccept, reject, allowRemovals });
+              onSave({ clientId, autoAccept, reject, allowRemovals, onlySyncable });
               onClose();
             }}
           >

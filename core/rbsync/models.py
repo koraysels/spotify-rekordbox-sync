@@ -67,6 +67,7 @@ class SpotifyPlaylist:
     owner: str = ""
     snapshot_id: str = ""
     owner_id: str = ""
+    collaborative: bool = False
 
 
 @dataclass(frozen=True, slots=True)

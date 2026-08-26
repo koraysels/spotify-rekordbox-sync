@@ -35,6 +35,7 @@ SETTING_CLIENT_ID = "spotify_client_id"
 SETTING_AUTO_ACCEPT = "auto_accept"
 SETTING_REJECT = "reject"
 SETTING_ALLOW_REMOVALS = "allow_removals"
+SETTING_ONLY_SYNCABLE = "only_syncable"
 
 
 @dataclass(slots=True)
@@ -77,6 +78,15 @@ class AppService:
 
     def allow_removals(self) -> bool:
         return self.cache.get_setting(SETTING_ALLOW_REMOVALS, "0") == "1"
+
+    def only_syncable(self) -> bool:
+        """Hide playlists Spotify will not serve. On by default.
+
+        Since February 2026 Spotify returns contents only for playlists the user
+        owns or collaborates on; the rest answer 403 and cannot be synced at
+        all, so listing them is just noise.
+        """
+        return self.cache.get_setting(SETTING_ONLY_SYNCABLE, "1") == "1"
 
     def client_id(self) -> str:
         """A Client ID the user set, otherwise the one bundled with the build."""
@@ -135,7 +145,16 @@ class AppService:
     def list_playlists(self) -> list[SpotifyPlaylist]:
         client = self.spotify()
         try:
-            return client.list_playlists()
+            playlists = client.list_playlists()
+            if not self.only_syncable():
+                return playlists
+            me = client.current_user_id()
+            # Collaborative playlists are readable even when owned by someone
+            # else, so filtering on ownership alone would hide working ones.
+            return [
+                p for p in playlists
+                if p.collaborative or not p.owner_id or not me or p.owner_id == me
+            ]
         finally:
             client.close()
 

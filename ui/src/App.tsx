@@ -135,7 +135,16 @@ export default function App() {
 
   const saveSettings = (patch: Partial<Settings>) =>
     run("Saving settings", async () => {
-      setSettings(await rpc.call<Settings>("settings.set", patch as Record<string, unknown>));
+      const updated = await rpc.call<Settings>(
+        "settings.set",
+        patch as Record<string, unknown>,
+      );
+      setSettings(updated);
+      // The visible playlist set depends on this setting, so refresh it.
+      if (patch.onlySyncable !== undefined && status?.authenticated) {
+        const result = await rpc.call<{ playlists: Playlist[] }>("playlists.list");
+        setPlaylists(result.playlists);
+      }
     });
 
   const planSync = () =>

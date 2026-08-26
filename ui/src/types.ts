@@ -81,6 +81,7 @@ export interface Settings {
   autoAccept: number;
   reject: number;
   allowRemovals: boolean;
+  onlySyncable: boolean;
 }
 
 export interface ApplyResult {
