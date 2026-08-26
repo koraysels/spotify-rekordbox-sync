@@ -345,6 +345,32 @@ class RekordboxLibrary:
             for p in self._db.get_playlist().all()
         ]
 
+    def playlist_tree(self) -> list[dict]:
+        """The whole rekordbox playlist tree: folders, playlists and counts.
+
+        Track counts come from one pass over the song-playlist table rather than
+        a query per playlist — a real library has hundreds of playlists, and
+        per-playlist queries make this take seconds instead of milliseconds.
+        """
+        counts: dict[str, int] = {}
+        for song in self._db.get_playlist_songs().all():
+            key = str(song.PlaylistID)
+            counts[key] = counts.get(key, 0) + 1
+
+        nodes = []
+        for playlist in self._db.get_playlist().all():
+            nodes.append(
+                {
+                    "id": str(playlist.ID),
+                    "name": playlist.Name or "",
+                    "parentId": str(playlist.ParentID or "root"),
+                    "isFolder": int(playlist.Attribute or 0) == ATTR_FOLDER,
+                    "trackCount": counts.get(str(playlist.ID), 0),
+                    "seq": int(playlist.Seq or 0),
+                }
+            )
+        return nodes
+
     def find_playlist(self, name: str, parent_id: str | None = None) -> RbPlaylist | None:
         for playlist in self._db.get_playlist().all():
             if (playlist.Name or "") != name:

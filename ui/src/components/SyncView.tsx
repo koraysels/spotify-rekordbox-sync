@@ -4,10 +4,42 @@ import { rpc } from "../rpc";
 import { Spinner } from "./Spinner";
 import type { Playlist, PlaylistPlan } from "../types";
 
-interface RbPlaylist {
+interface RbNode {
   id: string;
   name: string;
+  parentId: string;
+  isFolder: boolean;
   trackCount: number;
+}
+
+interface FlatNode extends RbNode {
+  depth: number;
+}
+
+/** Flatten the tree into rows, so it renders exactly as rekordbox shows it. */
+function flatten(nodes: RbNode[]): FlatNode[] {
+  const byParent = new Map<string, RbNode[]>();
+  for (const node of nodes) {
+    const siblings = byParent.get(node.parentId) ?? [];
+    siblings.push(node);
+    byParent.set(node.parentId, siblings);
+  }
+  for (const siblings of byParent.values()) {
+    siblings.sort((a, b) => {
+      if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  const out: FlatNode[] = [];
+  const walk = (parentId: string, depth: number) => {
+    for (const node of byParent.get(parentId) ?? []) {
+      out.push({ ...node, depth });
+      if (node.isFolder) walk(node.id, depth + 1);
+    }
+  };
+  walk("root", 0);
+  return out;
 }
 
 interface Props {
@@ -46,22 +78,26 @@ export function SyncView({
   onApply,
   refreshKey,
 }: Props) {
-  const [rbPlaylists, setRbPlaylists] = useState<RbPlaylist[] | null>(null);
+  const [rbNodes, setRbNodes] = useState<RbNode[] | null>(null);
   const [rbError, setRbError] = useState<string | null>(null);
 
   useEffect(() => {
     setRbError(null);
     rpc
-      .call<{ playlists: RbPlaylist[] }>("rekordbox.playlists")
-      .then((result) => setRbPlaylists(result.playlists))
+      .call<{ nodes: RbNode[] }>("rekordbox.tree")
+      .then((result) => setRbNodes(result.nodes))
       .catch((cause) => {
-        setRbPlaylists([]);
+        setRbNodes([]);
         setRbError(cause instanceof Error ? cause.message : String(cause));
       });
   }, [refreshKey]);
 
+  const rows = flatten(rbNodes ?? []);
+  const spotifyFolder = (rbNodes ?? []).find((n) => n.isFolder && n.name === "Spotify");
   const chosen = playlists.filter((p) => selected.has(p.id));
-  const existingNames = new Set((rbPlaylists ?? []).map((p) => p.name));
+  const existingNames = new Set(
+    (rbNodes ?? []).filter((n) => n.parentId === spotifyFolder?.id).map((n) => n.name),
+  );
   // Selected playlists that rekordbox does not have yet are shown as ghosts, so
   // the right-hand side previews the result rather than only the past.
   const pending = chosen.filter((p) => !existingNames.has(p.name));
@@ -105,7 +141,14 @@ export function SyncView({
                   {playlist.name}
                 </span>
                 <span className="syncrow-meta">
-                  {plan ? `${plan.coverage.percent}%` : `${playlist.trackCount}`}
+                  {plan ? (
+                    <>
+                      <span className="pct">{plan.coverage.percent}%</span>
+                      <span className="of">{playlist.trackCount}</span>
+                    </>
+                  ) : (
+                    <span className="of">{playlist.trackCount}</span>
+                  )}
                 </span>
               </li>
             );
@@ -165,35 +208,52 @@ export function SyncView({
       <section className="syncpane">
         <header className="syncpane-head">
           <h2>rekordbox</h2>
-          <span className="syncpane-actions muted">Spotify folder</span>
+          <span className="syncpane-actions muted">
+            {rbNodes ? `${rbNodes.length} playlists` : "your library"}
+          </span>
         </header>
         <ul className="synclist">
-          {rbPlaylists === null && (
+          {rbNodes === null && (
             <li className="playlists-loading">
               <Spinner size={13} label="Reading rekordbox…" />
             </li>
           )}
-          {rbPlaylists?.map((playlist) => (
-            <li key={playlist.id} className="syncrow">
-              <span className="syncrow-name" title={playlist.name}>
-                {playlist.name}
+
+          {rows.map((node) => (
+            <li
+              key={node.id}
+              className={
+                node.id === spotifyFolder?.id ? "syncrow tree spotify-folder" : "syncrow tree"
+              }
+              style={{ paddingLeft: 14 + node.depth * 16 }}
+            >
+              <span className="syncrow-name" title={node.name}>
+                {node.isFolder ? "▸ " : ""}
+                {node.name}
               </span>
-              <span className="syncrow-meta">{playlist.trackCount}</span>
+              <span className="syncrow-meta">
+                {node.isFolder ? "" : node.trackCount}
+              </span>
             </li>
           ))}
+
+          {/* Selected playlists rekordbox does not have yet, shown where they
+              will appear: inside the Spotify folder. */}
           {pending.map((playlist) => (
-            <li key={`pending-${playlist.id}`} className="syncrow ghost">
+            <li
+              key={`pending-${playlist.id}`}
+              className="syncrow tree ghost"
+              style={{ paddingLeft: 14 + (spotifyFolder ? 16 : 0) }}
+            >
               <span className="syncrow-name" title={playlist.name}>
                 {playlist.name}
               </span>
               <span className="syncrow-meta">new</span>
             </li>
           ))}
-          {rbPlaylists?.length === 0 && pending.length === 0 && !rbError && (
-            <li className="empty">
-              Nothing here yet. The <code>Spotify</code> folder is created the first time
-              you apply a sync.
-            </li>
+
+          {rbNodes?.length === 0 && !rbError && (
+            <li className="empty">No playlists in rekordbox yet.</li>
           )}
           {rbError && <li className="empty warn">{rbError}</li>}
         </ul>

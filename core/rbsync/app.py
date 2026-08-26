@@ -558,6 +558,11 @@ class AppService:
                 for p in sorted(playlists, key=lambda p: p.name.lower())
             ]
 
+    def rekordbox_tree(self) -> list[dict]:
+        """Every playlist and folder in rekordbox, for showing its real tree."""
+        with RekordboxLibrary.open(self.db_path) as library:
+            return library.playlist_tree()
+
     def playlist_tree_status(self) -> dict:
         """Whether rekordbox can actually see everything in the database."""
         with RekordboxLibrary.open(self.db_path) as library:

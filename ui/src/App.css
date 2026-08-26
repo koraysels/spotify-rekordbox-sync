@@ -1077,3 +1077,25 @@ button.big {
   width: 100%;
   justify-content: center;
 }
+
+/* rekordbox tree rows: indentation comes from the node depth, so the folder
+   structure reads the same way it does inside rekordbox. */
+.syncrow.tree {
+  grid-template-columns: 1fr auto;
+  cursor: default;
+}
+
+.syncrow.tree.spotify-folder .syncrow-name {
+  color: #FF9A4D;
+  font-weight: 600;
+}
+
+.syncrow-meta .pct {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.syncrow-meta .of {
+  color: var(--muted);
+  margin-left: 8px;
+}

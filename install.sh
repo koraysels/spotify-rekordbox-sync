@@ -42,7 +42,10 @@ if [ -d "$TARGET" ]; then
   rm -rf "$TARGET"
 fi
 
-cp -R "$SOURCE" "$TARGET"
+# ditto rather than cp -R: it preserves the extended attributes and resource
+# forks an app bundle carries, which cp can drop and thereby invalidate the
+# code signature.
+ditto "$SOURCE" "$TARGET"
 
 # Strip the quarantine flag from the bundle and the embedded sidecar binary.
 xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true

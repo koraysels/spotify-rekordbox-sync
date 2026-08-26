@@ -197,6 +197,10 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         server.progress("Restoring rekordbox library")
         return service.restore_backup(str(path))
 
+    def rekordbox_tree(**_):
+        """The full rekordbox playlist tree, not just the Spotify folder."""
+        return {"nodes": service.rekordbox_tree()}
+
     def rekordbox_repair(**_):
         """Re-register playlists rekordbox cannot see because the tree file
         was never updated."""
@@ -268,6 +272,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("rekordbox.playlists", rekordbox_playlists),
         ("library.health", library_health),
         ("rekordbox.repair", rekordbox_repair),
+        ("rekordbox.tree", rekordbox_tree),
         ("backups.list", backups_list),
         ("backups.create", backups_create),
         ("backups.restore", backups_restore),
