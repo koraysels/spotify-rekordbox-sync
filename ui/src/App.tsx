@@ -4,8 +4,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import "./App.css";
 import { isTauri, rpc } from "./rpc";
+import { revealPath } from "./reveal";
 import { Banner } from "./components/Banner";
 import { BottomBar } from "./components/BottomBar";
+import { ApplyDialog, type ApplyState } from "./components/ApplyDialog";
 import { CandidatePicker } from "./components/CandidatePicker";
 import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
@@ -13,6 +15,7 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
+import { SyncView } from "./components/SyncView";
 import { WantlistBanner } from "./components/WantlistBanner";
 import {
   TrackTable,
@@ -51,6 +54,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [view, setView] = useState<"sync" | "tracks">("sync");
+  // Bumped after an Apply so the rekordbox column re-reads the database.
+  const [libraryVersion, setLibraryVersion] = useState(0);
+  const [applyState, setApplyState] = useState<ApplyState | null>(null);
   const [files, setFiles] = useState<Map<string, FileStatus>>(new Map());
   const [picking, setPicking] = useState<TrackPlan | null>(null);
   const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
@@ -240,20 +247,35 @@ export default function App() {
       setStaleIds(new Set());
     });
 
-  const applySync = () =>
-    run("Writing to rekordbox", async () => {
+  const applySync = async () => {
+    // Apply gets its own dialog rather than the shared busy banner: it is the
+    // irreversible step, and its result must not scroll past unnoticed.
+    setApplyState({ phase: "running", message: "Checking that rekordbox is closed", results: [], error: null });
+    const stopProgress = rpc.onProgress((message) =>
+      setApplyState((current) =>
+        current?.phase === "running" ? { ...current, message } : current,
+      ),
+    );
+    try {
       const result = await rpc.call<{ results: ApplyResult[] }>("sync.apply");
-      const added = result.results.reduce((sum, entry) => sum + entry.added, 0);
-      const removed = result.results.reduce((sum, entry) => sum + entry.removed, 0);
-      setNotice(
-        `Wrote ${added} track(s)${removed ? `, removed ${removed}` : ""} to rekordbox. ` +
-          `Backup: ${result.results[0]?.backupPath ?? "none"}`,
-      );
+      setApplyState({ phase: "done", message: "", results: result.results, error: null });
       setPlans(new Map());
       setCoverage(null);
       setStaleIds(new Set());
       restoredFor.current = null;
-    });
+      setLibraryVersion((current) => current + 1);
+    } catch (cause) {
+      setApplyState({
+        phase: "error",
+        message: "",
+        results: [],
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
+    } finally {
+      stopProgress();
+      void refreshStatus();
+    }
+  };
 
   const exportWantlist = () =>
     run("Exporting", async () => {
@@ -375,6 +397,8 @@ export default function App() {
         onSettings={() => setShowSettings(true)}
         onHistory={() => setShowHistory(true)}
         onLibrary={() => setShowLibrary(true)}
+        view={view}
+        onView={setView}
       />
 
       {cloudWarning && (
@@ -408,6 +432,21 @@ export default function App() {
           onConnect={connectSpotify}
           onSettings={() => setShowSettings(true)}
         />
+      ) : view === "sync" ? (
+        <SyncView
+          playlists={playlists}
+          selected={selected}
+          plans={plans}
+          busy={busy !== null}
+          rekordboxRunning={Boolean(status?.rekordbox_running)}
+          hasPlan={plans.size > 0}
+          onToggle={togglePlaylist}
+          onSelectAll={() => persistSelection(new Set(playlists.map((p) => p.id)))}
+          onSelectNone={() => persistSelection(new Set())}
+          onPlan={planSync}
+          onApply={applySync}
+          refreshKey={libraryVersion}
+        />
       ) : (
       <main className="main">
         <PlaylistList
@@ -440,6 +479,7 @@ export default function App() {
       </main>
       )}
 
+      {view === "tracks" && (
       <BottomBar
         selectedCount={selected.size}
         coverage={coverage}
@@ -450,9 +490,20 @@ export default function App() {
         onApply={applySync}
         onExport={exportWantlist}
       />
+      )}
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
+
+      {applyState && (
+        <ApplyDialog
+          state={applyState}
+          onClose={() => setApplyState(null)}
+          onReveal={(path) => {
+            void revealPath(path);
+          }}
+        />
+      )}
 
       {picking && (
         <CandidatePicker

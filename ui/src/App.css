@@ -740,3 +740,178 @@ button.big {
   bottom: auto;
   top: calc(100% + 6px);
 }
+
+/* --- sync view: Spotify | arrow | rekordbox --- */
+
+.syncview {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 300px 1fr;
+  min-height: 0;
+}
+
+.syncpane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+.syncview .syncpane:last-child {
+  border-right: none;
+  border-left: 1px solid var(--line);
+}
+
+.syncpane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.syncpane-head h2 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.syncpane-actions {
+  display: inline-flex;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.synclist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.syncrow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(38, 43, 51, 0.5);
+  cursor: pointer;
+}
+
+.syncview .syncpane:last-child .syncrow {
+  grid-template-columns: 1fr auto;
+  cursor: default;
+}
+
+.syncrow:hover {
+  background: var(--panel-2);
+}
+
+.syncrow.picked {
+  background: rgba(255, 154, 77, 0.08);
+  box-shadow: inset 2px 0 0 #FF9A4D;
+}
+
+/* Selected on the left but not in rekordbox yet: a preview of the result. */
+.syncrow.ghost {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.syncrow-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.syncrow-meta {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+.syncmiddle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 24px 18px;
+  background: var(--bg);
+}
+
+.syncarrow {
+  width: 240px;
+  height: 108px;
+  opacity: 0.28;
+  transition: opacity 160ms ease;
+}
+
+.syncarrow.active {
+  opacity: 1;
+}
+
+.syncmiddle-summary {
+  text-align: center;
+  min-height: 44px;
+}
+
+.syncmiddle-summary p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.syncmiddle-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  align-items: stretch;
+  text-align: center;
+}
+
+.syncmiddle-actions button {
+  justify-content: center;
+}
+
+/* --- view switcher --- */
+
+.viewtabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.viewtabs button {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  padding: 3px 12px;
+}
+
+.viewtabs button.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.apply-running {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 0 6px;
+}
+
+.apply-running p {
+  margin: 0;
+}

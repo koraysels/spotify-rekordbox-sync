@@ -7,9 +7,19 @@ interface Props {
   onSettings: () => void;
   onHistory: () => void;
   onLibrary: () => void;
+  view: "sync" | "tracks";
+  onView: (value: "sync" | "tracks") => void;
 }
 
-export function StatusBar({ status, busy, onSettings, onHistory, onLibrary }: Props) {
+export function StatusBar({
+  status,
+  busy,
+  onSettings,
+  onHistory,
+  onLibrary,
+  view,
+  onView,
+}: Props) {
   return (
     <header className="statusbar" data-tauri-drag-region>
       <div className="statusbar-items">
@@ -35,6 +45,14 @@ export function StatusBar({ status, busy, onSettings, onHistory, onLibrary }: Pr
         />
       </div>
       <div className="statusbar-right">
+        <span className="viewtabs">
+          <button className={view === "sync" ? "on" : ""} onClick={() => onView("sync")}>
+            Sync
+          </button>
+          <button className={view === "tracks" ? "on" : ""} onClick={() => onView("tracks")}>
+            Tracks
+          </button>
+        </span>
         {busy && (
           <span className="busy">
             <Spinner size={12} label={busy} />

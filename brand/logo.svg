@@ -28,8 +28,8 @@
     <path d="M 692 200.3 A 360 360 0 1 1 332 200.3"
           fill="none" stroke="url(#disc)" stroke-width="104" stroke-linecap="butt"/>
     <path d="M 401 158 L 349 281 L 268 148 Z" fill="#FFC15E"/>
-    <circle cx="512" cy="512" r="152" fill="url(#disc)"/>
-    <circle cx="512" cy="512" r="46" fill="none"/>
+    <path d="M 512.0 354.0 L 648.8 433.0 L 648.8 591.0 L 512.0 670.0 L 375.2 591.0 L 375.2 433.0 Z" fill="url(#disc)"/>
+    <path d="M 512.0 464.0 L 553.6 488.0 L 553.6 536.0 L 512.0 560.0 L 470.4 536.0 L 470.4 488.0 Z" fill="#FFFFFF" fill-opacity="0"/>
   </g>
 
   <text x="310" y="152"
