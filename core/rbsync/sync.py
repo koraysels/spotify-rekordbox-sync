@@ -45,6 +45,9 @@ class PlaylistPlan:
     to_add: list[str] = field(default_factory=list)
     to_remove: list[str] = field(default_factory=list)
     coverage: Coverage = field(default_factory=Coverage)
+    # Set when the playlist could not be read at all; it is then carried through
+    # the plan so the UI can explain it rather than silently dropping it.
+    error: str | None = None
 
     def tracks_in_band(self, band: Band) -> list[TrackPlan]:
         return [t for t in self.tracks if t.band is band]

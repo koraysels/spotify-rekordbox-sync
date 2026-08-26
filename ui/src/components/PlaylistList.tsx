@@ -66,7 +66,11 @@ export function PlaylistList({
               <span className="playlist-name" title={playlist.name}>
                 {playlist.name}
               </span>
-              {plan ? (
+              {plan?.error ? (
+                <span className="coverage poor" title={plan.error}>
+                  n/a
+                </span>
+              ) : plan ? (
                 <span className={coverageTone(plan.coverage.percent)}>
                   {plan.coverage.percent}%
                 </span>

@@ -57,6 +57,8 @@ export interface PlaylistPlan {
   toAdd: string[];
   toRemove: string[];
   coverage: Coverage;
+  /** Set when Spotify refused to share the playlist's contents. */
+  error: string | null;
 }
 
 export interface SyncPlan {

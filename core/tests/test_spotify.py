@@ -198,3 +198,71 @@ class TestTokenExpiry:
     def test_valid_token_is_not_expired(self):
         import time
         assert Tokens("tok", "ref", expires_at=time.time() + 3600).expired is False
+
+
+class FailingTransport:
+    """Raises the given HTTP status for any request."""
+
+    def __init__(self, status: int):
+        self.status = status
+
+    def get(self, url, **kwargs):
+        import httpx
+
+        request = httpx.Request("GET", url)
+        response = httpx.Response(self.status, request=request)
+        raise httpx.HTTPStatusError("boom", request=request, response=response)
+
+
+class TestInaccessiblePlaylists:
+    """Spotify returns 403 for playlists the user follows but does not own."""
+
+    def test_forbidden_raises_a_named_error(self):
+        from rbsync.spotify import PlaylistAccessDenied
+
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=FailingTransport(403))
+        with pytest.raises(PlaylistAccessDenied):
+            client.playlist_tracks("pl")
+
+    def test_error_names_the_playlist(self):
+        from rbsync.spotify import PlaylistAccessDenied
+
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=FailingTransport(403))
+        try:
+            client.playlist_tracks("pl-123")
+        except PlaylistAccessDenied as exc:
+            assert "pl-123" in str(exc)
+
+    def test_other_errors_are_not_swallowed(self):
+        import httpx
+
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=FailingTransport(500))
+        with pytest.raises(httpx.HTTPStatusError):
+            client.playlist_tracks("pl")
+
+
+class TestPlaylistOwnership:
+    def _playlist(self, owner_id):
+        transport = FakeTransport({
+            "https://api.spotify.com/v1/me/playlists?limit=50": {
+                "items": [{
+                    "id": "p", "name": "N", "items": {"total": 1},
+                    "owner": {"id": owner_id, "display_name": "someone"},
+                }],
+                "next": None,
+            }
+        })
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=transport)
+        return client.list_playlists()[0]
+
+    def test_owner_id_is_captured(self):
+        assert self._playlist("me-123").owner_id == "me-123"
+
+    def test_missing_owner_is_empty(self):
+        transport = FakeTransport({
+            "https://api.spotify.com/v1/me/playlists?limit=50": {
+                "items": [{"id": "p", "name": "N", "items": {"total": 1}}], "next": None
+            }
+        })
+        client = SpotifyClient(Tokens("tok", "ref", 9999), transport=transport)
+        assert client.list_playlists()[0].owner_id == ""

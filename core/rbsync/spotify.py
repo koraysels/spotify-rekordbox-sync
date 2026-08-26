@@ -137,6 +137,15 @@ class _HttpxTransport:
         self._client.close()
 
 
+class PlaylistAccessDenied(RuntimeError):
+    """Spotify refused to return a playlist's contents.
+
+    Since the February 2026 API changes, playlist items are only served for
+    playlists the user owns or collaborates on. A playlist the user merely
+    follows answers 403, and that must not abort a sync of the others.
+    """
+
+
 class SpotifyClient:
     def __init__(self, tokens: Tokens, transport=None) -> None:
         self.tokens = tokens
@@ -160,6 +169,7 @@ class SpotifyClient:
                         name=item.get("name", "") or "",
                         track_count=int(counts.get("total", 0) or 0),
                         owner=((item.get("owner") or {}).get("display_name") or ""),
+                        owner_id=((item.get("owner") or {}).get("id") or ""),
                         snapshot_id=item.get("snapshot_id", "") or "",
                     )
                 )
@@ -174,7 +184,15 @@ class SpotifyClient:
         tracks: list[SpotifyTrack] = []
         url = f"{API_BASE}/playlists/{playlist_id}/items?limit=100"
         while url:
-            payload = self._transport.get(url)
+            try:
+                payload = self._transport.get(url)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 403:
+                    raise PlaylistAccessDenied(
+                        f"Spotify will not share the contents of playlist {playlist_id}. "
+                        "It only serves playlists you own or collaborate on."
+                    ) from exc
+                raise
             for item in payload.get("items", []):
                 track = self._parse_track(item)
                 if track is not None:

@@ -521,3 +521,19 @@ button.big {
   font-size: 14px;
   border-radius: 8px;
 }
+
+.blocked {
+  max-width: 460px;
+  text-align: center;
+}
+
+.blocked h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--warn);
+}
+
+.blocked p {
+  color: var(--muted);
+  line-height: 1.55;
+}

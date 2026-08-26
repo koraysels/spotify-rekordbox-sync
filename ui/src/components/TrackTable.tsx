@@ -32,6 +32,8 @@ export function TrackTable({
   lastClicked,
   onLastClicked,
 }: Props) {
+  const blocked = plan?.error ?? null;
+
   const rows = useMemo(() => {
     if (!plan) return [];
     return filter === "all" ? plan.tracks : plan.tracks.filter((t) => t.band === filter);
@@ -41,6 +43,22 @@ export function TrackTable({
     return (
       <section className="tracks empty-state">
         <p>Select playlists on the left, then press Plan sync.</p>
+      </section>
+    );
+  }
+
+  if (blocked) {
+    return (
+      <section className="tracks empty-state">
+        <div className="blocked">
+          <h3>Spotify won't share this playlist</h3>
+          <p>{blocked}</p>
+          <p className="hint">
+            Since February 2026 Spotify only returns the contents of playlists you own or
+            collaborate on. To sync this one, open it in Spotify and duplicate it into your
+            own account, then sync the copy.
+          </p>
+        </div>
       </section>
     );
   }

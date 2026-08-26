@@ -25,7 +25,7 @@ from .rekordbox import (
     ensure_safe_to_write,
     is_rekordbox_running,
 )
-from .spotify import SpotifyClient, Tokens, refresh
+from .spotify import PlaylistAccessDenied, SpotifyClient, Tokens, refresh
 from .sync import PlaylistPlan, SyncPlan, plan_playlist, wantlist_rows, wantlist_text
 from .tokens import TokenStore
 
@@ -155,7 +155,13 @@ class AppService:
                         continue
                     if progress:
                         progress(f"[{position}/{len(playlist_ids)}] {playlist.name}")
-                    tracks = client.playlist_tracks(playlist_id)
+                    try:
+                        tracks = client.playlist_tracks(playlist_id)
+                    except PlaylistAccessDenied as exc:
+                        # One unreadable playlist must not abort the others.
+                        log.warning("skipping %s: %s", playlist.name, exc)
+                        plans.append(PlaylistPlan(playlist=playlist, error=str(exc)))
+                        continue
                     existing: list[str] = []
                     if folder is not None:
                         target = library.find_playlist(playlist.name, parent_id=folder.id)

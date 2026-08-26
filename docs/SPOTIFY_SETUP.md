@@ -88,3 +88,10 @@ Something else is using port 8888. Quit it and sign in again.
 
 **All playlists show 0 tracks**
 An old build. Spotify changed the playlist API; update to a current build.
+
+**A playlist shows "n/a" and won't sync**
+Spotify only returns the contents of playlists you **own or collaborate on**.
+Playlists you merely follow answer 403 and cannot be read at all — this is a
+Spotify restriction introduced in February 2026, not something the app can work
+around. To sync one, open it in Spotify and duplicate it into your own account
+("Add to your library" is not enough — you need your own copy), then sync that.

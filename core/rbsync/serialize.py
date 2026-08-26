@@ -68,6 +68,7 @@ def playlist_plan_to_dict(plan: PlaylistPlan) -> dict:
         "toAdd": list(plan.to_add),
         "toRemove": list(plan.to_remove),
         "coverage": plan.coverage.as_dict(),
+        "error": plan.error,
     }
 
 

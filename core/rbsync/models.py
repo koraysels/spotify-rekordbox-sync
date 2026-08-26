@@ -66,6 +66,7 @@ class SpotifyPlaylist:
     track_count: int
     owner: str = ""
     snapshot_id: str = ""
+    owner_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
