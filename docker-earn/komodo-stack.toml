@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Komodo Resource Sync
+#
+# Zet dit bestand in je Komodo sync-repo (of wijs een ResourceSync naar dit
+# pad) en Komodo beheert de stack voortaan zelf: pullen, herstarten, updaten.
+#
+# Pas `server` aan naar de naam van je Komodo-server en vul de environment in.
+# Alternatief zonder sync: in de Komodo UI "Create Stack" -> Git repo ->
+# run_directory `docker-earn` -> file `docker-compose.yml` -> environment
+# plakken zoals hieronder.
+# ---------------------------------------------------------------------------
+
+[[stack]]
+name = "docker-earn"
+description = "Bandwidth-sharing containers; verdient een paar cent per dag."
+
+[stack.config]
+server = "CHANGE-ME"                     # naam van je server in Komodo
+git_provider = "github.com"
+repo = "koraysels/spotify-rekordbox-sync"
+branch = "claude/docker-earning-service-vbfkxl"
+run_directory = "docker-earn"
+file_paths = ["docker-compose.yml"]
+poll_for_updates = true
+auto_pull = true
+
+# Komodo injecteert dit als .env naast de compose file. Zet je geheimen bij
+# voorkeur in Komodo Variables/Secrets en refereer ze hier als [[secret]].
+environment = """
+COMPOSE_PROFILES=honeygain,earnapp,traffmonetizer
+DEVICE_NAME=komodo-server
+HONEYGAIN_EMAIL=[[HONEYGAIN_EMAIL]]
+HONEYGAIN_PASSWORD=[[HONEYGAIN_PASSWORD]]
+EARNAPP_UUID=[[EARNAPP_UUID]]
+TRAFFMONETIZER_TOKEN=[[TRAFFMONETIZER_TOKEN]]
+"""

@@ -1,0 +1,156 @@
+# ---------------------------------------------------------------------------
+# docker-earn — bandwidth-sharing stack
+#
+# Elke app zit achter een Compose *profile*. Niks start tenzij je het profiel
+# expliciet aanzet via COMPOSE_PROFILES in .env (of --profile op de CLI).
+# Zo draai je alleen wat je hebt geconfigureerd.
+#
+#   docker compose up -d
+#
+# Resource limits staan bewust laag: dit hoort achtergrondruis te zijn op je
+# server, geen medebewoner.
+# ---------------------------------------------------------------------------
+
+x-common: &common
+  restart: unless-stopped
+  network_mode: bridge
+  labels:
+    # laat de (optionele) watchtower alleen deze containers updaten
+    com.centurylinklabs.watchtower.scope: "earn"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+
+  # --- Honeygain -----------------------------------------------------------
+  # Signup: https://r.honeygain.me  |  payout vanaf 20 USD (crypto/PayPal)
+  honeygain:
+    <<: *common
+    profiles: ["honeygain"]
+    image: honeygain/honeygain:latest
+    container_name: earn-honeygain
+    command: -tou-accept -email ${HONEYGAIN_EMAIL} -pass ${HONEYGAIN_PASSWORD} -device ${DEVICE_NAME}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- EarnApp (Bright Data) ----------------------------------------------
+  # UUID zelf genereren: zie scripts/gen-earnapp-uuid.sh, daarna het device
+  # koppelen op https://earnapp.com/r/<uuid>
+  earnapp:
+    <<: *common
+    profiles: ["earnapp"]
+    image: fazalfarhan01/earnapp:lite
+    container_name: earn-earnapp
+    environment:
+      EARNAPP_UUID: ${EARNAPP_UUID}
+      EARNAPP_TERM: "yes"
+    volumes:
+      - earnapp-data:/etc/earnapp
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- Traffmonetizer ------------------------------------------------------
+  # Token staat in het dashboard onder "Your application token".
+  traffmonetizer:
+    <<: *common
+    profiles: ["traffmonetizer"]
+    image: traffmonetizer/cli_v2:latest
+    container_name: earn-traffmonetizer
+    command: start accept --token ${TRAFFMONETIZER_TOKEN} --device-name ${DEVICE_NAME}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- Repocket ------------------------------------------------------------
+  repocket:
+    <<: *common
+    profiles: ["repocket"]
+    image: repocket/repocket:latest
+    container_name: earn-repocket
+    environment:
+      RP_EMAIL: ${REPOCKET_EMAIL}
+      RP_API_KEY: ${REPOCKET_API_KEY}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- IPRoyal Pawns -------------------------------------------------------
+  pawns:
+    <<: *common
+    profiles: ["pawns"]
+    image: iproyal/pawns-cli:latest
+    container_name: earn-pawns
+    command: -email=${PAWNS_EMAIL} -password=${PAWNS_PASSWORD} -device-name=${DEVICE_NAME} -device-id=pawns-${DEVICE_NAME} -accept-tos
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- PacketStream --------------------------------------------------------
+  packetstream:
+    <<: *common
+    profiles: ["packetstream"]
+    image: packetstream/psclient:latest
+    container_name: earn-packetstream
+    environment:
+      CID: ${PACKETSTREAM_CID}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- EarnFM --------------------------------------------------------------
+  earnfm:
+    <<: *common
+    profiles: ["earnfm"]
+    image: earnfm/earnfm-client:latest
+    container_name: earn-earnfm
+    environment:
+      EARNFM_TOKEN: ${EARNFM_TOKEN}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- Proxyrack Peer ------------------------------------------------------
+  proxyrack:
+    <<: *common
+    profiles: ["proxyrack"]
+    image: proxyrack/pop:latest
+    container_name: earn-proxyrack
+    environment:
+      UUID: ${PROXYRACK_UUID}
+      API_KEY: ${PROXYRACK_API_KEY}
+    mem_limit: 256m
+    cpus: 0.25
+
+  # --- Mysterium Node ------------------------------------------------------
+  # Geen residential-proxy model maar een VPN-exit node: je verdient in MYST.
+  # Vereist host networking + poort forwarding om betaald verkeer te krijgen.
+  mysterium:
+    <<: *common
+    profiles: ["mysterium"]
+    image: mysteriumnetwork/myst:latest
+    container_name: earn-mysterium
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    command: --agreed-terms-and-conditions service --payments.zero-stake-unsettled-amount=0.5
+    volumes:
+      - mysterium-data:/var/lib/mysterium-node
+    mem_limit: 512m
+    cpus: 0.5
+
+  # --- Watchtower (optioneel) ---------------------------------------------
+  # Alleen aanzetten als je Komodo NIET zelf al images laat updaten.
+  watchtower:
+    <<: *common
+    profiles: ["watchtower"]
+    image: containrrr/watchtower:latest
+    container_name: earn-watchtower
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "86400"
+      WATCHTOWER_SCOPE: "earn"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    mem_limit: 128m
+
+volumes:
+  earnapp-data:
+  mysterium-data:
