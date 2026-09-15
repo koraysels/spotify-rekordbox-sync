@@ -8,6 +8,7 @@ interface Props {
   onHistory: () => void;
   onLibrary: () => void;
   onBackups: () => void;
+  onEnergy: () => void;
 }
 
 export function StatusBar({
@@ -17,6 +18,7 @@ export function StatusBar({
   onHistory,
   onLibrary,
   onBackups,
+  onEnergy,
 }: Props) {
   return (
     <header className="statusbar" data-tauri-drag-region>
@@ -49,6 +51,9 @@ export function StatusBar({
             <Spinner size={12} label={busy} />
           </span>
         )}
+        <button className="ghost" onClick={onEnergy}>
+          Energy
+        </button>
         <button className="ghost" onClick={onLibrary}>
           In rekordbox
         </button>

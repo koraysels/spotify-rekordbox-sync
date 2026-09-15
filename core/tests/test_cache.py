@@ -211,3 +211,49 @@ class TestThreadSafety:
 
         assert errors == []
         assert all(cache.get_decision(f"s{i}") is not None for i in range(8))
+
+
+class TestFeatures:
+    def test_features_round_trip(self, cache):
+        cache.save_features({"sp1": {"energy": 0.8}})
+        assert cache.get_features(["sp1"]) == {"sp1": {"energy": 0.8}}
+
+    def test_unavailable_ids_are_remembered_as_none(self, cache):
+        cache.save_features({}, missing=["sp2"])
+        assert cache.get_features(["sp2"]) == {"sp2": None}
+
+    def test_never_fetched_ids_are_absent(self, cache):
+        assert cache.get_features(["nope"]) == {}
+
+    def test_many_keys_are_chunked(self, cache):
+        cache.save_features({f"sp{i}": {"energy": 0.1} for i in range(1200)})
+        assert len(cache.get_features([f"sp{i}" for i in range(1200)])) == 1200
+
+
+class TestResolutions:
+    def test_resolution_round_trips(self, cache):
+        cache.save_resolution("rb1", "fp", "sp1")
+        assert cache.get_resolutions() == {"rb1": ("fp", "sp1")}
+
+    def test_latest_resolution_wins(self, cache):
+        cache.save_resolution("rb1", "fp", "")
+        cache.save_resolution("rb1", "fp2", "sp1")
+        assert cache.get_resolutions()["rb1"] == ("fp2", "sp1")
+
+
+class TestMigrationToV4(object):
+    def test_v3_database_gains_feature_tables(self, tmp_path):
+        import sqlite3
+
+        path = tmp_path / "cache.db"
+        raw = sqlite3.connect(path)
+        raw.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        raw.execute("INSERT INTO settings VALUES ('k', 'v')")
+        raw.execute("PRAGMA user_version=3")
+        raw.commit()
+        raw.close()
+
+        upgraded = Cache(path)
+        upgraded.save_features({"sp1": {"energy": 0.5}})
+        assert upgraded.get_setting("k") == "v"
+        upgraded.close()

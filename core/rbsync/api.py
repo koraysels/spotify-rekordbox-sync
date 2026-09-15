@@ -255,7 +255,29 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             written.append(str(service.export_wantlist(plan, target, fmt=fmt)))
         return {"paths": written, "path": written[0]}
 
+    def features_get(spotifyIds=None, **_):
+        """Audio features for Spotify tracks, keyed by Spotify ID."""
+        return {"features": service.features_for(list(spotifyIds or []), progress=server.progress)}
+
+    def energy_scan(playlistIds=None, **_):
+        """Energy levels for the tracks in rekordbox playlists (or folders)."""
+        ids = list(playlistIds or [])
+        if not ids:
+            raise RuntimeError("Choose at least one rekordbox playlist to scan.")
+        server.progress("Reading rekordbox playlists")
+        return service.scan_energy(ids, progress=server.progress)
+
+    def energy_apply(levels=None, **_):
+        """Write "Energy N" My Tags. ``levels`` maps content id to 1..10."""
+        levels = dict(levels or {})
+        if not levels:
+            raise RuntimeError("Nothing to tag.")
+        return service.apply_energy(levels, progress=server.progress)
+
     for name, handler in (
+        ("features.get", features_get),
+        ("energy.scan", energy_scan),
+        ("energy.apply", energy_apply),
         ("status", status),
         ("settings.get", settings_get),
         ("settings.set", settings_set),

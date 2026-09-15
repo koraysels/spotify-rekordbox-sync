@@ -43,6 +43,9 @@ class LocalTrack:
     bit_rate: int = 0
     file_size: int = 0
     analysed: int = 0
+    bpm: float = 0.0
+    key: str = ""
+    comment: str = ""
 
     @property
     def display(self) -> str:

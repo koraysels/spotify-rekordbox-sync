@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +132,22 @@ class Cache:
                 fingerprint TEXT NOT NULL,
                 payload     TEXT NOT NULL,
                 created_at  TEXT NOT NULL
+            );
+            -- Audio features by Spotify ID or ISRC. payload NULL means the
+            -- provider had nothing, so the id is not asked about again.
+            CREATE TABLE IF NOT EXISTS features (
+                track_key  TEXT PRIMARY KEY,
+                payload    TEXT,
+                fetched_at TEXT NOT NULL
+            );
+            -- Which Spotify track a rekordbox row is. spotify_id '' means search
+            -- found nothing trustworthy. The fingerprint (title/artist/length)
+            -- makes an edited track resolve again.
+            CREATE TABLE IF NOT EXISTS resolutions (
+                content_id  TEXT PRIMARY KEY,
+                fingerprint TEXT NOT NULL,
+                spotify_id  TEXT NOT NULL,
+                resolved_at TEXT NOT NULL
             );
             """
         )
@@ -359,6 +375,54 @@ class Cache:
                 "SELECT value FROM settings WHERE key = ?", (key,)
             ).fetchone()
         return row["value"] if row else default
+
+    # --- audio features ----------------------------------------------------
+
+    def save_features(self, found: dict[str, dict], missing: list[str] = ()) -> None:
+        """Store fetched features, and remember ids the provider had nothing for."""
+        now = _now()
+        rows = [(key, json.dumps(payload), now) for key, payload in found.items()]
+        rows += [(key, None, now) for key in missing if key not in found]
+        with self._lock:
+            self._db.executemany(
+                "INSERT OR REPLACE INTO features (track_key, payload, fetched_at) VALUES (?, ?, ?)",
+                rows,
+            )
+            self._db.commit()
+
+    def get_features(self, keys: list[str]) -> dict[str, dict | None]:
+        """Cached entries for ``keys``: a dict, or None when known to be unavailable.
+
+        Keys never looked up are absent from the result.
+        """
+        result: dict[str, dict | None] = {}
+        wanted = [k for k in dict.fromkeys(keys) if k]
+        with self._lock:
+            for start in range(0, len(wanted), 500):
+                chunk = wanted[start : start + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in self._db.execute(
+                    f"SELECT track_key, payload FROM features WHERE track_key IN ({marks})", chunk
+                ):
+                    result[row["track_key"]] = json.loads(row["payload"]) if row["payload"] else None
+        return result
+
+    def save_resolution(self, content_id: str, fingerprint: str, spotify_id: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO resolutions (content_id, fingerprint, spotify_id, resolved_at)"
+                " VALUES (?, ?, ?, ?)",
+                (str(content_id), fingerprint, spotify_id, _now()),
+            )
+            self._db.commit()
+
+    def get_resolutions(self) -> dict[str, tuple[str, str]]:
+        """content_id -> (fingerprint, spotify_id)."""
+        with self._lock:
+            return {
+                row["content_id"]: (row["fingerprint"], row["spotify_id"])
+                for row in self._db.execute("SELECT content_id, fingerprint, spotify_id FROM resolutions")
+            }
 
     def close(self) -> None:
         self._db.close()

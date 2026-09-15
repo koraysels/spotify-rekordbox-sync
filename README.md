@@ -204,6 +204,41 @@ playlist's wantlist, select only that playlist.
 Exported as CSV and as plain `Artist - Title` lines for pasting into a search
 tool, with buttons to copy the list or reveal the file.
 
+## Energy, danceability and mood
+
+Spotify no longer gives new apps audio features (its endpoint answers 403), so
+rbsync gets them from [ReccoBeats](https://reccobeats.com), a free API that
+accepts Spotify track IDs and ISRCs. No key or setup needed.
+
+**In a sync plan**, every track shows `bpm` and `key` (from rekordbox's analysis
+of the matched file, or Spotify's tempo when unmatched) plus `energy` (1–10),
+`dance` and `mood` (valence, 0–100). Click a column header to sort.
+
+**For your existing rekordbox playlists**, open **Energy** in the top bar:
+
+1. Tick playlists or whole folders and press **Scan**.
+2. Each track is identified on Spotify by ISRC, or by searching title and artist
+   and accepting only a confident match (same scoring as the sync matcher).
+3. Press **Tag N in rekordbox** to write the energy as a My Tag `Energy N`, in a
+   My Tag column called `Energy`.
+
+Details worth knowing:
+
+- rekordbox has **no energy field** of its own; My Tags are filterable and show
+  on CDJs, which is why they are used.
+- rekordbox allows four My Tag columns. rbsync uses a column named `Energy`,
+  creates one if there is room, or takes over a column still called
+  `Untitled Column`. It never renames a column you named.
+- Tracks that already carry a **Mixed In Key** energy in their comment
+  (`9A - Energy 6`) are shown with that value and skipped, unless you tick
+  *also tag Mixed In Key tracks*. Comments are never modified. The two scales come
+  from different analyses and will not agree exactly.
+- Writing uses the same gate as a sync: rekordbox closed, backup first, one
+  transaction. Re-tagging an already-tagged track is a no-op.
+- Scans are **incremental**: Spotify lookups and features are cached, so a
+  re-scan only looks up tracks added since (a 27-track playlist re-scans in
+  about 0.1 s).
+
 ## Plans are remembered
 
 Planning fetches every selected playlist and matches it against the whole

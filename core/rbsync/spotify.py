@@ -205,6 +205,13 @@ class SpotifyClient:
             url = payload.get("next")
         return tracks
 
+    def search_tracks(self, query: str, limit: int = 10) -> list[SpotifyTrack]:
+        """Search the catalogue. Spotify caps ``limit`` at 10 since February 2026."""
+        params = urlencode({"q": query, "type": "track", "limit": min(max(limit, 1), 10)})
+        payload = self._transport.get(f"{API_BASE}/search?{params}")
+        items = ((payload or {}).get("tracks") or {}).get("items") or []
+        return [t for t in (self._parse_track({"item": i}) for i in items) if t is not None and t.id]
+
     @staticmethod
     def _parse_track(item: dict | None) -> SpotifyTrack | None:
         """Convert one playlist item, or None if it cannot be matched locally.

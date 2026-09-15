@@ -29,6 +29,10 @@ _NOISE_GROUP = re.compile(
 
 _BRACKETS = re.compile(r"\(([^()]*)\)|\[([^\[\]]*)\]")
 _TRAILING_FEAT = re.compile(r"\b(?:feat|ft)\.?\s+.*$")
+# Mixed In Key can rename titles to "1A - Energy 6 - Title".
+_MIK_PREFIX = re.compile(r"^\d{1,2}[ab](?:\s*/\s*\d{1,2}[ab])?\s*-\s*energy\s*\d{1,2}\s*-\s*")
+# Producer credits appended without brackets ("Panda Prod. By: Menace").
+_TRAILING_PROD = re.compile(r"\bprod(?:uced)?\.?\s*by\b.*$")
 # Two-digit prefixes are file track numbers ("03 Versace"). A single digit is
 # far more likely to belong to the title ("7 Rings"), so it is left alone.
 _TRACK_NUMBER = re.compile(r"^\d{2}\s+")
@@ -92,8 +96,10 @@ def normalize_title(title: str | None) -> str:
     text = _fold(title)
     if not text:
         return ""
+    text = _MIK_PREFIX.sub("", text)
     text = _strip_bracket_noise(text)
     text = _TRAILING_FEAT.sub(" ", text)
+    text = _TRAILING_PROD.sub(" ", text)
     text = _WS.sub(" ", text).strip()
     text = _TRACK_NUMBER.sub("", text)
     return _depunctuate(text)
