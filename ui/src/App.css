@@ -1169,3 +1169,119 @@ button.big {
 .legend-key .count {
   font-weight: 600;
 }
+
+/* --- energy --- */
+
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+th.sortable:hover {
+  color: var(--text, #e6e6e6);
+}
+
+.energy-pill {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-align: center;
+  font-weight: 600;
+  color: #0d0f13;
+  font-variant-numeric: tabular-nums;
+}
+/* Cool (low) to hot (high). */
+.energy-pill.e1, .energy-pill.e2 { background: #5b8def; }
+.energy-pill.e3, .energy-pill.e4 { background: #4fb8c9; }
+.energy-pill.e5, .energy-pill.e6 { background: #7cc36a; }
+.energy-pill.e7, .energy-pill.e8 { background: #e3b341; }
+.energy-pill.e9, .energy-pill.e10 { background: #e0574a; }
+
+.energy-cell {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.energy-mik {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.modal.energy-modal {
+  width: min(1100px, 100%);
+  height: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+}
+.energy-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.energy-tree,
+.energy-results {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.energy-results {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+.energy-results .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.energy-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.energy-tree-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.energy-tree-row .num {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.energy-tree-row .folder-name {
+  color: var(--muted);
+}
+.energy-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.energy-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.band.energy-ready { color: var(--accent); border-color: rgba(29, 185, 84, 0.4); }
+.band.energy-tagged { color: var(--muted); border-color: var(--line); }
+.band.energy-unresolved,
+.band.energy-no-data,
+.band.energy-pending { color: var(--review); border-color: rgba(216, 161, 58, 0.4); }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.modal-actions .muted {
+  margin-right: auto;
+}

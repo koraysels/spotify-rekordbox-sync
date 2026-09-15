@@ -18,11 +18,29 @@ export interface Candidate {
   folderPath: string;
   lengthSeconds: number;
   bitRate: number;
+  bpm: number;
+  key: string;
   score: number;
   reason: string;
   titleScore: number;
   artistScore: number;
   durationScore: number;
+}
+
+/** Audio features from ReccoBeats; 0..1 except tempo, key and loudness. */
+export interface TrackFeatures {
+  energy: number;
+  energyLevel: number;
+  danceability: number | null;
+  valence: number | null;
+  tempo: number | null;
+  key: number | null;
+  mode: number | null;
+  loudness: number | null;
+  acousticness: number | null;
+  instrumentalness: number | null;
+  speechiness: number | null;
+  liveness: number | null;
 }
 
 export interface TrackPlan {

@@ -3,7 +3,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import { copyText, searchQueryFor } from "../clipboard";
 import { isTauri } from "../rpc";
-import type { Band, PlaylistPlan, SpotifyTrack, TrackPlan } from "../types";
+import type { Band, PlaylistPlan, SpotifyTrack, TrackFeatures, TrackPlan } from "../types";
 
 export interface FileStatus {
   exists: boolean;
@@ -34,7 +34,11 @@ interface Props {
   browse: BrowseState | null;
   /** Per content id: whether the matched audio file is reachable right now. */
   files: Map<string, FileStatus>;
+  /** Audio features per Spotify track id. */
+  features: Map<string, TrackFeatures>;
 }
+
+type SortKey = "none" | "energy" | "dance" | "mood" | "bpm";
 
 const BAND_LABEL: Record<Band, string> = {
   accept: "matched",
@@ -54,13 +58,45 @@ export function TrackTable({
   onLastClicked,
   browse,
   files,
+  features,
 }: Props) {
   const blocked = plan?.error ?? null;
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "none", desc: true });
 
   const rows = useMemo(() => {
     if (!plan) return [];
-    return filter === "all" ? plan.tracks : plan.tracks.filter((t) => t.band === filter);
-  }, [plan, filter]);
+    const shown = filter === "all" ? plan.tracks : plan.tracks.filter((t) => t.band === filter);
+    if (sort.key === "none") return shown;
+    const value = (row: TrackPlan): number => {
+      const f = features.get(row.track.id);
+      switch (sort.key) {
+        case "energy":
+          return f?.energy ?? -1;
+        case "dance":
+          return f?.danceability ?? -1;
+        case "mood":
+          return f?.valence ?? -1;
+        case "bpm":
+          return row.candidates[0]?.bpm || f?.tempo || -1;
+        default:
+          return 0;
+      }
+    };
+    return [...shown].sort((a, b) => (sort.desc ? value(b) - value(a) : value(a) - value(b)));
+  }, [plan, filter, sort, features]);
+
+  const sortHeader = (key: SortKey, label: string, tip: string) => (
+    <th
+      className="col-score sortable"
+      data-tip={tip}
+      onClick={() =>
+        setSort((s) => (s.key === key ? (s.desc ? { key, desc: false } : { key: "none", desc: true }) : { key, desc: true }))
+      }
+    >
+      {label}
+      {sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}
+    </th>
+  );
 
   if (!plan) {
     // Browsing: show what is in the playlist on Spotify, before any matching.
@@ -216,6 +252,11 @@ export function TrackTable({
               <th className="col-band">state</th>
               <th>Spotify</th>
               <th>Rekordbox match</th>
+              {sortHeader("bpm", "bpm", "BPM from rekordbox, or Spotify tempo when not matched")}
+              <th className="col-score">key</th>
+              {sortHeader("energy", "energy", "Energy 1–10 (ReccoBeats audio features)")}
+              {sortHeader("dance", "dance", "Danceability 0–100")}
+              {sortHeader("mood", "mood", "Valence 0–100: sad/dark to happy/euphoric")}
               <th className="col-score">score</th>
               <th className="col-change"></th>
             </tr>
@@ -248,6 +289,7 @@ export function TrackTable({
                       best.display
                     )}
                   </td>
+                  <FeatureCells row={row} features={features.get(row.track.id)} />
                   <td className="col-score">{row.score ? row.score.toFixed(2) : "—"}</td>
                   <td className="col-change">
                     {row.band === "reject" ? (
@@ -273,7 +315,7 @@ export function TrackTable({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="empty">
+                <td colSpan={11} className="empty">
                   Nothing in this band.
                 </td>
               </tr>
@@ -429,6 +471,40 @@ function CopyActions({ track }: { track: SpotifyTrack }) {
         <span>{done("link") ? (state!.ok ? "copied" : "failed") : "link"}</span>
       </button>
     </span>
+  );
+}
+
+const PITCH = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/** BPM/key prefer the rekordbox analysis of the matched file; energy etc. come from Spotify's track. */
+function FeatureCells({ row, features }: { row: TrackPlan; features?: TrackFeatures }) {
+  const local = row.band === "reject" ? undefined : row.candidates[0];
+  const bpm = local?.bpm || features?.tempo || 0;
+  const key =
+    local?.key ||
+    (features?.key !== null && features?.key !== undefined && features.key >= 0
+      ? `${PITCH[features.key]}${features.mode === 0 ? "m" : ""}`
+      : "");
+  const pct = (value: number | null | undefined) =>
+    value === null || value === undefined ? "—" : String(Math.round(value * 100));
+  return (
+    <>
+      <td className="col-score" title={local?.bpm ? "rekordbox analysis" : bpm ? "Spotify tempo" : ""}>
+        {bpm ? bpm.toFixed(0) : "—"}
+      </td>
+      <td className="col-score">{key || "—"}</td>
+      <td className="col-score">
+        {features ? (
+          <span className={`energy-pill e${features.energyLevel}`} title={`energy ${features.energy.toFixed(2)}`}>
+            {features.energyLevel}
+          </span>
+        ) : (
+          <span className="muted">—</span>
+        )}
+      </td>
+      <td className="col-score">{pct(features?.danceability)}</td>
+      <td className="col-score">{pct(features?.valence)}</td>
+    </>
   );
 }
 

@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -50,6 +52,31 @@ SIDECARS = ("-wal", "-shm")
 # Rekordbox marks folders with Attribute == 1; ordinary playlists use 0.
 ATTR_PLAYLIST = 0
 ATTR_FOLDER = 1
+
+# My Tag column holding "Energy 1".."Energy 10".
+ENERGY_COLUMN = "Energy"
+DEFAULT_COLUMN_NAME = "Untitled Column"
+MAX_MY_TAG_COLUMNS = 4
+_ENERGY_RE = re.compile(r"\benergy\s*(\d{1,2})\b", re.IGNORECASE)
+
+
+def energy_tag_name(level: int) -> str:
+    return f"Energy {level}"
+
+
+def parse_energy_tag(name: str) -> int | None:
+    match = re.fullmatch(r"\s*energy\s*(\d{1,2})\s*", name or "", re.IGNORECASE)
+    if not match or not 1 <= int(match.group(1)) <= 10:
+        return None
+    return int(match.group(1))
+
+
+def comment_energy(comment: str) -> int | None:
+    """Energy written into the comment by Mixed In Key ("9A - Energy 6")."""
+    match = _ENERGY_RE.search(comment or "")
+    if not match or not 1 <= int(match.group(1)) <= 10:
+        return None
+    return int(match.group(1))
 
 
 class RekordboxError(RuntimeError):
@@ -335,9 +362,135 @@ class RekordboxLibrary:
                     bit_rate=_as_int(content.BitRate),
                     file_size=_as_int(content.FileSize),
                     analysed=_as_int(content.Analysed),
+                    # rekordbox stores BPM multiplied by 100.
+                    bpm=round(_as_float(content.BPM) / 100.0, 2),
+                    key=content.KeyName or "",
+                    comment=content.Commnt or "",
                 )
             )
         return tracks
+
+    # --- energy tags -------------------------------------------------------
+
+    def _energy_column(self, create: bool):
+        """The My Tag column energy tags live under.
+
+        rekordbox allows four columns. An existing "Energy" column is used; a
+        free slot gets a new one; a column still carrying rekordbox's default
+        name is taken over, since nobody chose that name. Columns the user named
+        are never repurposed.
+        """
+        columns = [
+            t for t in self._db.get_my_tag(ParentID="root").all()
+            if _as_int(t.Attribute) == ATTR_FOLDER
+        ]
+        for column in columns:
+            if (column.Name or "").strip().lower() == ENERGY_COLUMN.lower():
+                return column
+        if not create:
+            return None
+        if len(columns) < MAX_MY_TAG_COLUMNS:
+            seq = max((_as_int(c.Seq) for c in columns), default=0) + 1
+            return self._add_my_tag(ENERGY_COLUMN, parent_id="root", seq=seq, attribute=ATTR_FOLDER)
+        for column in sorted(columns, key=lambda c: _as_int(c.Seq)):
+            if (column.Name or "").strip() == DEFAULT_COLUMN_NAME:
+                column.Name = ENERGY_COLUMN
+                return column
+        raise RekordboxError(
+            "rekordbox allows four My Tag columns and all four are named. Rename one "
+            f'to "{ENERGY_COLUMN}" in rekordbox (My Tag settings) and try again.'
+        )
+
+    def _add_my_tag(self, name: str, parent_id: str, seq: int, attribute: int):
+        from pyrekordbox.db6 import tables
+
+        now = datetime.now()
+        tag = tables.DjmdMyTag.create(
+            ID=str(self._db.generate_unused_id(tables.DjmdMyTag, is_28_bit=True)),
+            Seq=seq,
+            Name=name,
+            Attribute=attribute,
+            ParentID=str(parent_id),
+            UUID=str(uuid.uuid4()),
+            created_at=now,
+            updated_at=now,
+        )
+        self._db.add(tag)
+        self._db.flush()
+        return tag
+
+    def energy_tags(self) -> dict[str, int]:
+        """content_id -> energy level currently tagged through My Tags."""
+        column = self._energy_column(create=False)
+        if column is None:
+            return {}
+        levels = {
+            str(tag.ID): level
+            for tag in self._db.get_my_tag(ParentID=str(column.ID)).all()
+            if (level := parse_energy_tag(tag.Name or "")) is not None
+        }
+        result: dict[str, int] = {}
+        for link in self._db.get_my_tag_songs().all():
+            level = levels.get(str(link.MyTagID))
+            if level is not None:
+                result[str(link.ContentID)] = level
+        return result
+
+    def set_energy_tags(self, levels: dict[str, int]) -> int:
+        """Tag each track with "Energy N", replacing any other energy tag it had.
+
+        Returns how many tracks changed. Tracks already carrying the right tag
+        are left alone, so re-running is a no-op.
+        """
+        from pyrekordbox.db6 import tables
+
+        if not levels:
+            return 0
+        column = self._energy_column(create=True)
+        tags = {
+            level: tag
+            for tag in self._db.get_my_tag(ParentID=str(column.ID)).all()
+            if (level := parse_energy_tag(tag.Name or "")) is not None
+        }
+        energy_tag_ids = {str(tag.ID): level for level, tag in tags.items()}
+        other = [t for t in self._db.get_my_tag(ParentID=str(column.ID)).all()
+                 if str(t.ID) not in energy_tag_ids]
+        next_seq = max((_as_int(t.Seq) for t in [*tags.values(), *other]), default=0) + 1
+
+        links_by_content: dict[str, list] = {}
+        for link in self._db.get_my_tag_songs().all():
+            if str(link.MyTagID) in energy_tag_ids:
+                links_by_content.setdefault(str(link.ContentID), []).append(link)
+
+        changed = 0
+        for content_id, level in levels.items():
+            content_id = str(content_id)
+            level = min(10, max(1, int(level)))
+            existing = links_by_content.get(content_id, [])
+            if [energy_tag_ids[str(l.MyTagID)] for l in existing] == [level]:
+                continue
+            for link in existing:
+                self._db.delete(link)
+            if level not in tags:
+                tags[level] = self._add_my_tag(
+                    energy_tag_name(level), parent_id=str(column.ID), seq=next_seq, attribute=ATTR_PLAYLIST
+                )
+                energy_tag_ids[str(tags[level].ID)] = level
+                next_seq += 1
+            now = datetime.now()
+            self._db.add(
+                tables.DjmdSongMyTag.create(
+                    ID=str(self._db.generate_unused_id(tables.DjmdSongMyTag, is_28_bit=True)),
+                    MyTagID=str(tags[level].ID),
+                    ContentID=content_id,
+                    TrackNo=1,
+                    UUID=str(uuid.uuid4()),
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            changed += 1
+        return changed
 
     def list_playlists(self) -> list[RbPlaylist]:
         return [

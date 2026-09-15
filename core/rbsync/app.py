@@ -17,12 +17,14 @@ from pathlib import Path
 from . import paths
 from .branding import default_client_id
 from .cache import Cache
+from .features import ReccoBeatsClient, resolve_spotify_track
 from .matcher import Band, MatchConfig, TrackIndex
 from .models import Coverage, SpotifyPlaylist, SpotifyTrack
 from .rekordbox import (
     SPOTIFY_FOLDER,
     RekordboxLibrary,
     backup_database,
+    comment_energy,
     default_database_path,
     ensure_baseline_backup,
     ensure_safe_to_write,
@@ -578,6 +580,153 @@ class AppService:
         """Whether rekordbox can actually see everything in the database."""
         with RekordboxLibrary.open(self.db_path) as library:
             return {"missingFromTree": library.missing_from_xml()}
+
+    # --- audio features ----------------------------------------------------
+
+    def features_for(self, keys: list[str], progress=None) -> dict[str, dict]:
+        """Features by Spotify ID or ISRC, from cache or ReccoBeats.
+
+        Ids the provider has nothing for are cached as unavailable, so a
+        re-scan only ever asks about ids it has not seen.
+        """
+        wanted = [k for k in dict.fromkeys(keys) if k]
+        cached = self.cache.get_features(wanted)
+        unknown = [k for k in wanted if k not in cached]
+        if unknown:
+            if progress:
+                progress(f"Fetching audio features for {len(unknown)} tracks")
+            client = ReccoBeatsClient()
+            try:
+                found = {k: f.as_dict() for k, f in client.audio_features(unknown).items()}
+            finally:
+                client.close()
+            self.cache.save_features(found, missing=unknown)
+            cached.update({k: found.get(k) for k in unknown})
+        return {k: v for k, v in cached.items() if v}
+
+    @staticmethod
+    def _fingerprint(track) -> str:
+        return f"{track.title}|{track.artist}|{round(track.length_seconds)}"
+
+    def _expand_playlists(self, library: RekordboxLibrary, playlist_ids: list[str]) -> list[str]:
+        """Content ids in these playlists; a folder stands for everything under it."""
+        nodes = library.playlist_tree()
+        children: dict[str, list[dict]] = {}
+        for node in nodes:
+            children.setdefault(node["parentId"], []).append(node)
+        by_id = {node["id"]: node for node in nodes}
+
+        content_ids: list[str] = []
+        stack = [str(p) for p in playlist_ids]
+        seen: set[str] = set()
+        while stack:
+            current = stack.pop(0)
+            if current in seen:
+                continue
+            seen.add(current)
+            node = by_id.get(current)
+            if node and node["isFolder"]:
+                stack.extend(child["id"] for child in children.get(current, []))
+            else:
+                content_ids.extend(library.playlist_content_ids(current))
+        return list(dict.fromkeys(content_ids))
+
+    def scan_energy(self, playlist_ids: list[str], progress=None) -> dict:
+        """Work out an energy level for every track in some rekordbox playlists.
+
+        Incremental by design: Spotify lookups and features are cached, so only
+        tracks never seen before cost network calls.
+        """
+        with RekordboxLibrary.open(self.db_path) as library:
+            content_ids = self._expand_playlists(library, playlist_ids)
+            tagged = library.energy_tags()
+
+        tracks = [t for t in (self.index.get(cid) for cid in content_ids) if t is not None]
+        resolutions = self.cache.get_resolutions()
+
+        keys: dict[str, tuple[str, str]] = {}
+        to_search = []
+        for track in tracks:
+            if track.isrc:
+                keys[track.id] = (track.isrc.upper(), "isrc")
+                continue
+            known = resolutions.get(track.id)
+            if known and known[0] == self._fingerprint(track):
+                keys[track.id] = (known[1], "spotify") if known[1] else ("", "")
+                continue
+            to_search.append(track)
+
+        search_error = ""
+        if to_search:
+            try:
+                client = self.spotify()
+            except Exception as exc:  # noqa: BLE001 - scan still works for ISRC tracks
+                client = None
+                search_error = str(exc)
+            if client is not None:
+                try:
+                    for position, track in enumerate(to_search, start=1):
+                        if progress and (position == 1 or position % 10 == 0):
+                            progress(f"Finding tracks on Spotify ({position}/{len(to_search)})")
+                        try:
+                            found = resolve_spotify_track(track, client.search_tracks)
+                        except Exception as exc:  # noqa: BLE001
+                            log.warning("spotify search failed for %s: %s", track.display, exc)
+                            search_error = str(exc)
+                            break
+                        spotify_id = found.id if found else ""
+                        self.cache.save_resolution(track.id, self._fingerprint(track), spotify_id)
+                        keys[track.id] = (spotify_id, "spotify") if spotify_id else ("", "")
+                finally:
+                    client.close()
+
+        features = self.features_for([key for key, _ in keys.values()], progress=progress)
+
+        rows = []
+        for track in tracks:
+            key, source = keys.get(track.id, ("", ""))
+            data = features.get(key) if key else None
+            level = data["energyLevel"] if data else None
+            mik = comment_energy(track.comment)
+            current = tagged.get(track.id)
+            if track.id not in keys:
+                status = "pending"
+            elif not key:
+                status = "unresolved"
+            elif data is None:
+                status = "no-data"
+            elif current == level:
+                status = "tagged"
+            else:
+                status = "ready"
+            rows.append({
+                "contentId": track.id,
+                "display": track.display,
+                "bpm": track.bpm,
+                "key": track.key,
+                "source": source,
+                "spotifyId": key if source == "spotify" else "",
+                "features": data,
+                "energyLevel": level,
+                "taggedEnergy": current,
+                "commentEnergy": mik,
+                "status": status,
+            })
+        return {"tracks": rows, "searchError": search_error}
+
+    def apply_energy(self, levels: dict[str, int], progress=None) -> dict:
+        """Write "Energy N" My Tags, behind the same gate as a playlist sync."""
+        if progress:
+            progress("Checking that rekordbox is closed")
+        backup = ensure_safe_to_write(self.db_path, paths.backups_dir())
+        if progress:
+            progress(f"Backed up to {backup.name}")
+        with RekordboxLibrary.open(self.db_path) as library:
+            with library.transaction():
+                if progress:
+                    progress(f"Tagging {len(levels)} tracks")
+                changed = library.set_energy_tags({str(k): int(v) for k, v in levels.items()})
+        return {"changed": changed, "backupPath": str(backup)}
 
     # --- review ------------------------------------------------------------
 

@@ -16,10 +16,12 @@ import { ConnectPanel } from "./components/ConnectPanel";
 import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
+import { EnergyPanel } from "./components/EnergyPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { WantlistBanner } from "./components/WantlistBanner";
+import type { TrackFeatures } from "./types";
 import {
   TrackTable,
   type BandFilter,
@@ -58,6 +60,8 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
+  const [showEnergy, setShowEnergy] = useState(false);
+  const [features, setFeatures] = useState<Map<string, TrackFeatures>>(new Map());
   // Bumped after an Apply so the rekordbox column re-reads the database.
   const [, setLibraryVersion] = useState(0);
   const [applyState, setApplyState] = useState<ApplyState | null>(null);
@@ -396,6 +400,23 @@ export default function App() {
       });
   }, [plans]);
 
+  // Audio features for the Spotify tracks in the plans. Cached by the core, so
+  // re-opening a plan costs nothing.
+  useEffect(() => {
+    const ids = [...new Set([...plans.values()].flatMap((entry) => entry.tracks).map((t) => t.track.id))]
+      .filter((id) => id && !features.has(id));
+    if (ids.length === 0) return;
+    void rpc
+      .call<{ features: Record<string, TrackFeatures> }>("features.get", { spotifyIds: ids })
+      .then((result) =>
+        setFeatures((current) => new Map([...current, ...Object.entries(result.features)])),
+      )
+      .catch(() => {
+        // Features are extra information; a failed lookup leaves the columns empty.
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plans]);
+
   const activePlan = useMemo(
     () => (activePlaylist ? plans.get(activePlaylist) ?? null : null),
     [activePlaylist, plans],
@@ -412,6 +433,7 @@ export default function App() {
         onHistory={() => setShowHistory(true)}
         onLibrary={() => setShowLibrary(true)}
         onBackups={() => setShowBackups(true)}
+        onEnergy={() => setShowEnergy(true)}
       />
 
       <UpdateBanner />
@@ -478,6 +500,7 @@ export default function App() {
           onLastClicked={setLastClicked}
           browse={activePlaylist ? browse.get(activePlaylist) ?? null : null}
           files={files}
+          features={features}
         />
       </main>
       )}
@@ -497,6 +520,12 @@ export default function App() {
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
+      {showEnergy && (
+        <EnergyPanel
+          onClose={() => setShowEnergy(false)}
+          rekordboxRunning={Boolean(status?.rekordbox_running)}
+        />
+      )}
       {showBackups && (
         <BackupsPanel
           onClose={() => setShowBackups(false)}

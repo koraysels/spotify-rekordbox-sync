@@ -32,6 +32,8 @@ def candidate_to_dict(candidate: MatchCandidate) -> dict:
         "folderPath": candidate.track.folder_path,
         "lengthSeconds": candidate.track.length_seconds,
         "bitRate": candidate.track.bit_rate,
+        "bpm": candidate.track.bpm,
+        "key": candidate.track.key,
         "score": candidate.score,
         "reason": candidate.reason,
         "titleScore": candidate.title_score,
