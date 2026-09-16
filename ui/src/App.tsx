@@ -17,6 +17,7 @@ import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { EnergyPanel } from "./components/EnergyPanel";
+import { DecisionsPanel } from "./components/DecisionsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -29,7 +30,6 @@ import {
   type FileStatus,
 } from "./components/TrackTable";
 import type {
-  ApplyResult,
   CachedPlans,
   Playlist,
   SpotifyTrack,
@@ -63,6 +63,7 @@ export default function App() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showBackups, setShowBackups] = useState(false);
   const [showEnergy, setShowEnergy] = useState(false);
+  const [showDecisions, setShowDecisions] = useState(false);
   const [features, setFeatures] = useState<Map<string, TrackFeatures>>(new Map());
   // Read inside the fetch loop without making it a dependency, or every arriving
   // chunk would restart the loop.
@@ -250,7 +251,9 @@ export default function App() {
 
   const planSync = () =>
     run("Planning", async () => {
-      if (!status?.tracks_indexed) await rpc.call("library.load");
+      // Always re-read the collection: files imported into rekordbox since the
+      // last read would otherwise never be matched until the app restarts.
+      await rpc.call("library.load");
       const plan = await rpc.call<SyncPlan>("sync.plan", {
         playlistIds: [...selected],
         force: true,
@@ -267,39 +270,6 @@ export default function App() {
       setRowSelection(new Set());
       setStaleIds(new Set());
     });
-
-  const applySync = async () => {
-    // Apply gets its own dialog rather than the shared busy banner: it is the
-    // irreversible step, and its result must not scroll past unnoticed.
-    setApplyState({ phase: "running", message: "Checking that rekordbox is closed", results: [], error: null });
-    const stopProgress = rpc.onProgress((message) =>
-      setApplyState((current) =>
-        current?.phase === "running" ? { ...current, message } : current,
-      ),
-    );
-    try {
-      const result = await rpc.call<{ results: ApplyResult[] }>("sync.apply");
-      setApplyState({ phase: "done", message: "", results: result.results, error: null });
-      setPlans(new Map());
-      setCoverage(null);
-      setStaleIds(new Set());
-      restoredFor.current = null;
-      setLibraryVersion((current) => current + 1);
-    } catch (cause) {
-      setApplyState({
-        phase: "error",
-        message: "",
-        results: [],
-        error: cause instanceof Error ? cause.message : String(cause),
-      });
-    } finally {
-      stopProgress();
-      // Progress events set busy but nothing clears it, which leaves the
-      // status bar spinning after the work has finished.
-      setBusy(null);
-      void refreshStatus();
-    }
-  };
 
   const exportWantlist = () =>
     run("Exporting", async () => {
@@ -330,6 +300,7 @@ export default function App() {
             spotify_id: row.track.id,
             content_id: contentId ?? "",
             accepted: Boolean(contentId),
+            ...decisionContext(row, contentId),
           },
         ],
       });
@@ -345,12 +316,29 @@ export default function App() {
           spotify_id: entry.track.id,
           content_id: entry.candidates[0]?.contentId ?? "",
           accepted,
+          ...decisionContext(entry, entry.candidates[0]?.contentId ?? null),
         }));
       if (decisions.length === 0) return;
       await rpc.call("review.decide", { decisions });
       // Re-plan so the preview reflects the decisions that were just made.
       await replan();
       setRowSelection(new Set());
+    });
+
+  /**
+   * Names stored with a decision, so it can be understood and undone later.
+   * Two bare ids cannot say which song was rejected, or which file.
+   */
+  const decisionContext = (row: TrackPlan, contentId: string | null) => ({
+    track_display: row.track.display,
+    content_display: row.candidates.find((c) => c.contentId === contentId)?.display ?? "",
+    playlist_name: activePlan?.playlist.name ?? "",
+  });
+
+  const undoDecision = (row: TrackPlan) =>
+    run("Undoing decision", async () => {
+      await rpc.call("decisions.forget", { spotifyIds: [row.track.id] });
+      await replan();
     });
 
   const openPlaylist = useCallback(
@@ -458,6 +446,7 @@ export default function App() {
         onLibrary={() => setShowLibrary(true)}
         onBackups={() => setShowBackups(true)}
         onEnergy={() => setShowEnergy(true)}
+        onDecisions={() => setShowDecisions(true)}
       />
 
       <UpdateBanner />
@@ -526,6 +515,7 @@ export default function App() {
           browse={activePlaylist ? browse.get(activePlaylist) ?? null : null}
           files={files}
           features={features}
+          onUndoDecision={(row) => void undoDecision(row)}
         />
       </main>
       )}
@@ -535,16 +525,24 @@ export default function App() {
         selectedCount={selected.size}
         coverage={coverage}
         hasPlan={plans.size > 0}
-        rekordboxRunning={Boolean(status?.rekordbox_running)}
         busy={busy !== null}
         onPlan={planSync}
-        onApply={applySync}
         onExport={exportWantlist}
       />
 
 
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
+      {showDecisions && (
+        <DecisionsPanel
+          onClose={() => setShowDecisions(false)}
+          // Undone decisions change what a plan would do; recompute when
+          // there is something selected to plan.
+          onChanged={() => {
+            if (selected.size > 0) void replan();
+          }}
+        />
+      )}
       {showEnergy && (
         <EnergyPanel
           onClose={() => setShowEnergy(false)}

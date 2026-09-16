@@ -226,6 +226,14 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
     def review_decide(decisions=None, **_):
         return {"decided": service.decide_bulk(list(decisions or []))}
 
+    def decisions_list(**_):
+        """Every accept and reject the user made, newest first, with names."""
+        return {"decisions": service.list_decisions()}
+
+    def decisions_forget(spotifyIds=None, **_):
+        """Undo decisions; those tracks are matched afresh on the next plan."""
+        return {"forgotten": service.forget_decisions(list(spotifyIds or []))}
+
     def wantlist_get(**_):
         plan = state.get("plan")
         if plan is None:
@@ -294,6 +302,8 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         ("plans.cached", plans_cached),
         ("sync.apply", sync_apply),
         ("review.decide", review_decide),
+        ("decisions.list", decisions_list),
+        ("decisions.forget", decisions_forget),
         ("tracks.verify", tracks_verify),
         ("rekordbox.playlists", rekordbox_playlists),
         ("library.health", library_health),

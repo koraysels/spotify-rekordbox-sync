@@ -257,3 +257,53 @@ class TestMigrationToV4(object):
         upgraded.save_features({"sp1": {"energy": 0.5}})
         assert upgraded.get_setting("k") == "v"
         upgraded.close()
+
+
+class TestDecisionContext:
+    """Decisions carry enough to be understood later, not just two ids."""
+
+    def test_context_round_trips(self, cache):
+        cache.remember_decision("sp1", "rb1", accepted=False, track_display="Chicane - Saltwater",
+                                content_display="Chicane - Salt Water", playlist_name="Loos")
+        decision = cache.get_decision("sp1")
+        assert decision.track_display == "Chicane - Saltwater"
+        assert decision.content_display == "Chicane - Salt Water"
+        assert decision.playlist_name == "Loos"
+
+    def test_context_is_optional(self, cache):
+        cache.remember_decision("sp1", "rb1", accepted=True)
+        assert cache.get_decision("sp1").track_display == ""
+
+    def test_list_is_newest_first(self, cache, monkeypatch):
+        stamps = iter(["2026-01-01T00:00:00+00:00", "2026-02-01T00:00:00+00:00"])
+        monkeypatch.setattr("rbsync.cache._now", lambda: next(stamps))
+        cache.remember_decision("old", "rb1", accepted=True)
+        cache.remember_decision("new", "rb2", accepted=False)
+        assert [d.spotify_id for d in cache.list_decisions()] == ["new", "old"]
+
+    def test_forgetting_removes_it_from_the_list(self, cache):
+        cache.remember_decision("sp1", "rb1", accepted=False)
+        cache.forget_decision("sp1")
+        assert cache.list_decisions() == []
+
+
+class TestMigrationToV5:
+    def test_existing_decisions_survive_and_gain_context_columns(self, tmp_path):
+        import sqlite3
+
+        path = tmp_path / "cache.db"
+        raw = sqlite3.connect(path)
+        raw.execute("CREATE TABLE decisions (spotify_id TEXT PRIMARY KEY, content_id TEXT NOT NULL,"
+                    " accepted INTEGER NOT NULL, decided_at TEXT NOT NULL)")
+        raw.execute("INSERT INTO decisions VALUES ('sp1', 'rb1', 0, '2026-08-26T13:56:23+00:00')")
+        raw.execute("PRAGMA user_version=4")
+        raw.commit()
+        raw.close()
+
+        upgraded = Cache(path)
+        decision = upgraded.get_decision("sp1")
+        assert decision.content_id == "rb1" and decision.accepted is False
+        assert decision.track_display == ""
+        upgraded.remember_decision("sp2", "rb2", accepted=True, track_display="A - B")
+        assert upgraded.get_decision("sp2").track_display == "A - B"
+        upgraded.close()

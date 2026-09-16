@@ -67,6 +67,33 @@ class SyncPlan:
         return total
 
 
+def _plan_after_rejection(
+    track: SpotifyTrack, index: TrackIndex, config: MatchConfig, rejected_id: str
+) -> TrackPlan:
+    """Match again with the rejected file left out.
+
+    A rejection says "not this file". Treating it as "not in the collection"
+    hides other copies and puts a track the user owns on the wantlist. Whatever
+    is left waits in review: the user turned down a match for this track once,
+    so nothing is added for it without them looking again.
+    """
+    if not rejected_id:
+        # "Mark as missing" rejects with no file: none of these are the track.
+        return TrackPlan(track=track, band=Band.REJECT, reason="rejected")
+    remaining = [
+        candidate for candidate in index.search(track)
+        if str(candidate.track.id) != str(rejected_id)
+    ]
+    if not remaining:
+        return TrackPlan(track=track, band=Band.REJECT, reason="rejected")
+    best = remaining[0]
+    band = Band.REVIEW if best.score > config.reject else Band.REJECT
+    return TrackPlan(
+        track=track, band=band, content_id=None, score=best.score,
+        reason="rejected", candidates=remaining,
+    )
+
+
 def plan_playlist(
     playlist: SpotifyPlaylist,
     tracks: list[SpotifyTrack],
@@ -110,7 +137,7 @@ def plan_playlist(
                     candidates=candidates,
                 )
             else:
-                track_plan = TrackPlan(track=track, band=Band.REJECT, reason="cached")
+                track_plan = _plan_after_rejection(track, index, config, decision.content_id)
             plan.tracks.append(track_plan)
         else:
             result = match_track(track, index, config)

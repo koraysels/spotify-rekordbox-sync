@@ -83,7 +83,11 @@ def _looks_like_another_version(
         return False
 
     shorter, longer = sorted((title, other_title), key=len)
-    if not (longer.startswith(shorter) or _similarity(title, other_title) >= 0.75):
+    if not (
+        longer.startswith(shorter)
+        or _same_leading_words(title, other_title)
+        or _similarity(title, other_title) >= 0.75
+    ):
         return False
 
     # The artist still has to line up, or every long track sharing a common word
@@ -110,12 +114,42 @@ def _dice(a: set[str], b: set[str]) -> float:
     return 2.0 * overlap / (len(a) + len(b))
 
 
+# Similarity for titles that differ only in word spacing ("saltwater" against
+# "salt water original edit"). Strong, but short of identical.
+_LEADING_WORDS_SIMILARITY = 0.85
+
+
+def _same_leading_words(left: str, right: str) -> bool:
+    """Whether one title, spaces removed, is exactly the other's leading words.
+
+    Catches one name spelled joined and split ("Saltwater" / "Salt Water").
+    Matching on whole leading words, not a raw prefix, keeps "water" from
+    matching "waterfall".
+    """
+    if not left or not right or left == right:
+        return False
+    shorter, longer = sorted((left, right), key=lambda s: len(s.replace(" ", "")))
+    target = shorter.replace(" ", "")
+    joined = ""
+    for word in longer.split():
+        joined += word
+        if joined == target:
+            return True
+        if len(joined) >= len(target):
+            return False
+    return False
+
+
 def _similarity(left: str, right: str) -> float:
     """Token-set similarity with a sequence fallback for near-spellings."""
     if not left or not right:
         return 0.0
     if left == right:
         return 1.0
+    if left.replace(" ", "") == right.replace(" ", ""):
+        return 1.0
+    if _same_leading_words(left, right):
+        return max(_LEADING_WORDS_SIMILARITY, SequenceMatcher(None, left, right).ratio())
     left_tokens = set(left.split())
     right_tokens = set(right.split())
     dice = _dice(left_tokens, right_tokens)

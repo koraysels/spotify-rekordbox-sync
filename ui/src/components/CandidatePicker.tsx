@@ -61,7 +61,21 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                     <td className="mono muted" title={candidate.folderPath}>
                       {candidate.fileName}
                     </td>
-                    <td className="num">{formatSeconds(candidate.lengthSeconds)}</td>
+                    <td
+                      className={
+                        Math.abs(candidate.lengthSeconds - row.track.durationMs / 1000) >= 5 ? "num len-diff" : "num"
+                      }
+                      title="Length of this file. Highlighted when it differs from the Spotify version by 5 seconds or more."
+                    >
+                      {formatSeconds(candidate.lengthSeconds)}
+                      {Math.abs(candidate.lengthSeconds - row.track.durationMs / 1000) >= 5 && (
+                        <span className="len-delta">
+                          {" "}
+                          {candidate.lengthSeconds > row.track.durationMs / 1000 ? "+" : "−"}
+                          {formatSeconds(Math.abs(candidate.lengthSeconds - row.track.durationMs / 1000))}
+                        </span>
+                      )}
+                    </td>
                     <td className="num">{candidate.bitRate || "—"}</td>
                     <td
                       className="num"

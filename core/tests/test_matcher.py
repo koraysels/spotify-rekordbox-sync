@@ -205,3 +205,20 @@ class TestLookupById:
 
     def test_lookup_is_string_keyed(self, config):
         assert TrackIndex([local("7", "Versace", "Migos", 195)]).get(7) is not None
+
+
+class TestCompoundTitles:
+    """ "Saltwater" and "Salt Water" are one title spelled two ways."""
+
+    def test_joined_spelling_is_offered_as_another_version(self, config):
+        index = TrackIndex([local("1", "Salt Water - Original Edit", "Chicane", 234)])
+        result = match_track(
+            spotify("s1", "Saltwater", ["Chicane", "Moya Brennan"], 202_500), index, config
+        )
+        assert result.band is Band.REVIEW
+        assert result.best.track.id == "1"
+
+    def test_joined_spelling_with_another_artist_is_not_offered(self, config):
+        index = TrackIndex([local("1", "Salt Water - Original Edit", "Somebody Else", 234)])
+        result = match_track(spotify("s1", "Saltwater", ["Chicane"], 202_500), index, config)
+        assert result.band is Band.REJECT

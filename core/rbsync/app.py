@@ -730,8 +730,74 @@ class AppService:
 
     # --- review ------------------------------------------------------------
 
-    def decide(self, spotify_id: str, content_id: str, accepted: bool) -> None:
-        self.cache.remember_decision(spotify_id, content_id, accepted)
+    def decide(
+        self,
+        spotify_id: str,
+        content_id: str,
+        accepted: bool,
+        track_display: str = "",
+        content_display: str = "",
+        playlist_name: str = "",
+    ) -> None:
+        self.cache.remember_decision(
+            spotify_id, content_id, accepted,
+            track_display=track_display, content_display=content_display,
+            playlist_name=playlist_name,
+        )
+
+    def list_decisions(self) -> list[dict]:
+        """Every accept or reject, with names, so a decision can be found and undone.
+
+        Decisions stored before names were recorded are named from the stored
+        plans. The rekordbox library is not loaded for this: it is only used
+        when already in memory.
+        """
+        track_names: dict[str, str] = {}
+        playlist_names: dict[str, str] = {}
+        file_names: dict[str, str] = {}
+        for payload in self.cache.all_plan_payloads():
+            playlist_name = (payload.get("playlist") or {}).get("name", "")
+            for row in payload.get("tracks") or []:
+                track = row.get("track") or {}
+                spotify_id = track.get("id")
+                if not spotify_id:
+                    continue
+                # Stored plans carry name and artists; only some carry "display".
+                display = track.get("display") or " - ".join(
+                    part for part in (", ".join(track.get("artists") or []), track.get("name", "")) if part
+                )
+                track_names.setdefault(spotify_id, display)
+                if playlist_name:
+                    playlist_names.setdefault(spotify_id, playlist_name)
+                for candidate in row.get("candidates") or []:
+                    if candidate.get("contentId"):
+                        file_names.setdefault(str(candidate["contentId"]), candidate.get("display", ""))
+
+        rows = []
+        for decision in self.cache.list_decisions():
+            content_display = decision.content_display or file_names.get(decision.content_id, "")
+            if not content_display and self._index is not None and decision.content_id:
+                local = self._index.get(decision.content_id)
+                content_display = local.display if local else ""
+            rows.append({
+                "spotifyId": decision.spotify_id,
+                "contentId": decision.content_id,
+                "accepted": decision.accepted,
+                "decidedAt": decision.decided_at,
+                "trackDisplay": decision.track_display or track_names.get(decision.spotify_id, ""),
+                "contentDisplay": content_display,
+                "playlistName": decision.playlist_name or playlist_names.get(decision.spotify_id, ""),
+            })
+        return rows
+
+    def forget_decisions(self, spotify_ids: list[str]) -> int:
+        """Undo decisions, so those tracks are matched afresh on the next plan."""
+        forgotten = 0
+        for spotify_id in dict.fromkeys(spotify_ids):
+            if self.cache.get_decision(spotify_id) is not None:
+                self.cache.forget_decision(spotify_id)
+                forgotten += 1
+        return forgotten
 
     def decide_bulk(self, decisions: list[dict]) -> int:
         """Apply many review decisions at once.
@@ -743,6 +809,9 @@ class AppService:
             self.decide(
                 decision["spotify_id"], decision.get("content_id", ""),
                 bool(decision.get("accepted")),
+                track_display=decision.get("track_display", "") or "",
+                content_display=decision.get("content_display", "") or "",
+                playlist_name=decision.get("playlist_name", "") or "",
             )
         return len(decisions)
 
