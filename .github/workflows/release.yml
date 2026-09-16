@@ -106,6 +106,27 @@ jobs:
           APP=ui/src-tauri/target/release/bundle/macos/rbsync.app
           codesign --verify --deep --strict --verbose=2 "$APP"
 
+      - name: Check the sidecar starts from the update
+        # A valid signature is not enough. With hardened runtime on, macOS
+        # enforces library validation and refuses the Python framework that the
+        # PyInstaller sidecar unpacks at start, so the sidecar dies instantly
+        # ("The sync engine stopped unexpectedly") while every signature check
+        # passes. A local install re-signs the bundle and hides this, so test
+        # the exact tarball the in-app updater installs, straight from the build.
+        run: |
+          TGZ=$(ls ui/src-tauri/target/release/bundle/macos/*.app.tar.gz | head -1)
+          WORK=$(mktemp -d)
+          tar -xzf "$TGZ" -C "$WORK"
+          CORE="$WORK/rbsync.app/Contents/MacOS/rbsync-core"
+          codesign -dv "$CORE" 2>&1 | grep -E "flags|Signature"
+          if codesign -dv "$CORE" 2>&1 | grep -q "runtime"; then
+            echo "sidecar is signed with hardened runtime; it will not load its Python"
+            exit 1
+          fi
+          REPLY=$(echo '{"jsonrpc":"2.0","id":1,"method":"status","params":{}}' | "$CORE" 2>&1 | head -c 2000)
+          echo "$REPLY"
+          echo "$REPLY" | grep -q '"result"' || { echo "sidecar did not answer from the update bundle"; exit 1; }
+
       - name: Name the artifacts
         id: artifacts
         run: |
@@ -238,9 +259,11 @@ jobs:
   publish:
     name: Publish release
     needs: [macos, windows]
-    # Runs even if the optional Intel leg never produced anything, so long as
-    # something was built.
-    if: always()
+    # Only when the required builds passed their checks. The Intel leg is
+    # continue-on-error, so its failure alone still leaves the macOS job green;
+    # a failed Apple Silicon or Windows build must never publish, or a release
+    # whose sidecar cannot start goes out to everyone through the updater.
+    if: ${{ !cancelled() && needs.macos.result == 'success' && needs.windows.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

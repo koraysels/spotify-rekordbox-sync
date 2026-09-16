@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "rbsync",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "identifier": "be.cursorpointer.rbsync",
   "build": {
     "frontendDist": "../dist",
@@ -41,7 +41,8 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "hardenedRuntime": false
     },
     "createUpdaterArtifacts": true
   },
