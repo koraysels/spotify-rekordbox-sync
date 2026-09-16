@@ -42,7 +42,12 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                   <th>file</th>
                   <th className="num">length</th>
                   <th className="num">kbps</th>
-                  <th className="num">score</th>
+                  <th
+                    className="num"
+                    title="How sure rbsync is that this file is the same record as the Spotify track, from 0 to 1. Title 55%, artist 30%, length 15%."
+                  >
+                    match conf.
+                  </th>
                   <th></th>
                 </tr>
               </thead>

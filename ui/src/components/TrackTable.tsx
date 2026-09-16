@@ -289,7 +289,7 @@ export function TrackTable({
               {sortHeader("dance", "dance", DANCE_TIP)}
               {sortHeader("mood", "mood", MOOD_TIP)}
               <th className="col-score" title={SCORE_TIP}>
-                score
+                match conf.
               </th>
               <th className="col-change"></th>
             </tr>
