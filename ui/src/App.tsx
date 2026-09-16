@@ -43,6 +43,8 @@ import type {
 const CALLBACK_PORT = 8888;
 const REDIRECT_URI = `http://127.0.0.1:${CALLBACK_PORT}/callback`;
 const CLOUD_SYNC_DISMISSED = "rbsync.cloudSyncWarningDismissed";
+/** Tracks per audio-feature request. Small enough that other RPC calls get a turn. */
+const FEATURE_CHUNK = 100;
 
 export default function App() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -62,6 +64,10 @@ export default function App() {
   const [showBackups, setShowBackups] = useState(false);
   const [showEnergy, setShowEnergy] = useState(false);
   const [features, setFeatures] = useState<Map<string, TrackFeatures>>(new Map());
+  // Read inside the fetch loop without making it a dependency, or every arriving
+  // chunk would restart the loop.
+  const featuresRef = useRef(features);
+  featuresRef.current = features;
   // Bumped after an Apply so the rekordbox column re-reads the database.
   const [, setLibraryVersion] = useState(0);
   const [applyState, setApplyState] = useState<ApplyState | null>(null);
@@ -400,22 +406,40 @@ export default function App() {
       });
   }, [plans]);
 
-  // Audio features for the Spotify tracks in the plans. Cached by the core, so
-  // re-opening a plan costs nothing.
+  // Audio features for the playlist being looked at — never for every plan at
+  // once. The core answers one request at a time, so a five-thousand-track
+  // lookup would block every other action until it finished. Small chunks let
+  // planning, exporting and applying keep working while these trickle in.
   useEffect(() => {
-    const ids = [...new Set([...plans.values()].flatMap((entry) => entry.tracks).map((t) => t.track.id))]
-      .filter((id) => id && !features.has(id));
+    const plan = activePlaylist ? plans.get(activePlaylist) : null;
+    if (!plan) return;
+    const ids = [...new Set(plan.tracks.map((t) => t.track.id))].filter(
+      (id) => id && !featuresRef.current.has(id),
+    );
     if (ids.length === 0) return;
-    void rpc
-      .call<{ features: Record<string, TrackFeatures> }>("features.get", { spotifyIds: ids })
-      .then((result) =>
-        setFeatures((current) => new Map([...current, ...Object.entries(result.features)])),
-      )
-      .catch(() => {
-        // Features are extra information; a failed lookup leaves the columns empty.
-      });
+
+    let cancelled = false;
+    void (async () => {
+      for (let start = 0; start < ids.length && !cancelled; start += FEATURE_CHUNK) {
+        try {
+          const result = await rpc.call<{ features: Record<string, TrackFeatures> }>("features.get", {
+            spotifyIds: ids.slice(start, start + FEATURE_CHUNK),
+          });
+          if (cancelled) return;
+          setFeatures((current) => new Map([...current, ...Object.entries(result.features)]));
+        } catch {
+          // Features are extra information; a failed lookup leaves the columns
+          // empty rather than interrupting what the user is doing.
+          return;
+        }
+      }
+    })();
+    // Switching playlist abandons the rest: those tracks are no longer on screen.
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plans]);
+  }, [activePlaylist, plans]);
 
   const activePlan = useMemo(
     () => (activePlaylist ? plans.get(activePlaylist) ?? null : null),
@@ -486,6 +510,7 @@ export default function App() {
           filter={playlistFilter}
           onFilter={setPlaylistFilter}
           loading={busy !== null}
+          onRefresh={() => void loadPlaylists()}
           staleIds={staleIds}
         />
         <TrackTable

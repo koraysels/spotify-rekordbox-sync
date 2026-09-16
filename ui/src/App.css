@@ -1285,3 +1285,14 @@ th.sortable:hover {
 .modal-actions .muted {
   margin-right: auto;
 }
+
+.playlists-actions .link.refresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.playlists-actions .link.refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
