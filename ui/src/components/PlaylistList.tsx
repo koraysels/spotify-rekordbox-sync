@@ -96,7 +96,7 @@ export function PlaylistList({
                   }
                   title={
                     staleIds.has(playlist.id)
-                      ? "This playlist or your settings changed since this plan was made. Press Plan sync to refresh it."
+                      ? "This playlist or your settings changed since this plan was made. Press Find matches to refresh it."
                       : undefined
                   }
                 >

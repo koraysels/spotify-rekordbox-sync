@@ -9,6 +9,7 @@ interface Props {
   onLibrary: () => void;
   onBackups: () => void;
   onEnergy: () => void;
+  onDecisions: () => void;
 }
 
 export function StatusBar({
@@ -19,6 +20,7 @@ export function StatusBar({
   onLibrary,
   onBackups,
   onEnergy,
+  onDecisions,
 }: Props) {
   return (
     <header className="statusbar" data-tauri-drag-region>
@@ -59,6 +61,9 @@ export function StatusBar({
         </button>
         <button className="ghost" onClick={onBackups}>
           Backups
+        </button>
+        <button className="ghost" onClick={onDecisions}>
+          Decisions
         </button>
         <button className="ghost" onClick={onHistory}>
           History

@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+
+import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { TrackInfoPanel } from "./TrackInfoPanel";
 
 import { copyText, searchQueryFor } from "../clipboard";
 import { isTauri } from "../rpc";
@@ -36,6 +39,8 @@ interface Props {
   files: Map<string, FileStatus>;
   /** Audio features per Spotify track id. */
   features: Map<string, TrackFeatures>;
+  /** Take back an earlier accept or reject for this row's track. */
+  onUndoDecision: (row: TrackPlan) => void;
 }
 
 type SortKey = "none" | "energy" | "dance" | "mood" | "bpm";
@@ -84,9 +89,30 @@ export function TrackTable({
   browse,
   files,
   features,
+  onUndoDecision,
 }: Props) {
   const blocked = plan?.error ?? null;
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "none", desc: true });
+  const [menu, setMenu] = useState<{ x: number; y: number; row: TrackPlan } | null>(null);
+  const [info, setInfo] = useState<TrackPlan | null>(null);
+  const [widths, setWidths] = useState<Partial<Record<Column, number>>>(loadWidths);
+
+  const resize = (column: Column, width: number) =>
+    setWidths((current) => {
+      const next = { ...current, [column]: Math.max(MIN_WIDTH, Math.round(width)) };
+      saveWidths(next);
+      return next;
+    });
+  const resetWidth = (column: Column) =>
+    setWidths((current) => {
+      const next = { ...current };
+      delete next[column];
+      saveWidths(next);
+      return next;
+    });
+  // Once columns are sized by hand, the table may be wider than the window;
+  // it scrolls sideways rather than squeezing the other columns to nothing.
+  const tableMinWidth = COLUMNS.reduce((sum, column) => sum + (widths[column] ?? DEFAULT_WIDTH[column]), 0);
 
   const rows = useMemo(() => {
     if (!plan) return [];
@@ -120,6 +146,7 @@ export function TrackTable({
     >
       {label}
       {sort.key === key ? (sort.desc ? " ↓" : " ↑") : ""}
+      <Resizer column={key as Column} onResize={resize} onReset={resetWidth} />
     </th>
   );
 
@@ -152,7 +179,7 @@ export function TrackTable({
               </span>
             </div>
             <div className="bulk">
-              <span className="muted">Press Plan sync to match these against rekordbox.</span>
+              <span className="muted">Press Find matches to match these against rekordbox.</span>
             </div>
           </div>
           <div className="table-wrap">
@@ -192,7 +219,7 @@ export function TrackTable({
 
     return (
       <section className="tracks empty-state">
-        <p>Select a playlist to see what's in it, then press Plan sync.</p>
+        <p>Select a playlist to see what's in it, then press Find matches.</p>
       </section>
     );
   }
@@ -236,6 +263,82 @@ export function TrackTable({
   const selectedTracks = rows.filter((row) => selectedIds.has(row.track.id));
   const counts = plan.coverage;
 
+  /** Menu actions for a row, or for the whole selection when the row is part of it. */
+  const menuItems = (row: TrackPlan): MenuItem[] => {
+    const targets = selectedIds.has(row.track.id) && selectedTracks.length > 1 ? selectedTracks : [row];
+    const many = targets.length > 1;
+    const count = many ? `${targets.length} tracks` : undefined;
+    const best = row.candidates[0];
+    const matched = row.band !== "reject" && best;
+    const path = files.get(row.contentId ?? "")?.path ?? best?.folderPath ?? "";
+    const acceptable = targets.filter((t) => t.candidates.length > 0);
+
+    const items: MenuItem[] = [];
+    if (!many) {
+      items.push({ label: "Track info…", onSelect: () => setInfo(row) });
+      items.push({
+        label: row.candidates.length > 0 ? "Choose match…" : "Show candidates…",
+        onSelect: () => onInspect(row),
+      });
+    }
+    items.push(
+      {
+        label: many ? "Accept best matches" : "Accept this match",
+        hint: count,
+        disabled: acceptable.length === 0,
+        onSelect: () => onDecide(acceptable, true),
+      },
+      {
+        label: many ? "Reject these matches" : row.candidates.length > 0 ? "Reject this match" : "Mark as missing",
+        hint: count,
+        danger: true,
+        onSelect: () => onDecide(targets, false),
+      },
+    );
+    const decided = targets.filter((t) => t.reason === "rejected" || t.reason === "cached");
+    if (decided.length > 0) {
+      items.push({
+        label: "Undo decision",
+        hint: decided.length > 1 ? `${decided.length} tracks` : undefined,
+        onSelect: () => decided.forEach((t) => onUndoDecision(t)),
+      });
+    }
+    items.push({ separator: true });
+    if (!many && matched) {
+      items.push({
+        label: "Show file in Finder",
+        disabled: !path || !isTauri(),
+        onSelect: () => void revealItemInDir(path).catch(() => {}),
+      });
+    }
+    if (!many) {
+      items.push(
+        {
+          label: `Copy "${searchQueryFor(row.track)}"`,
+          disabled: !row.track.name,
+          onSelect: () => void copyText(searchQueryFor(row.track)),
+        },
+        {
+          label: "Copy Spotify link",
+          disabled: !row.track.url,
+          onSelect: () => void copyText(row.track.url),
+        },
+        {
+          label: "Open in Spotify",
+          disabled: !row.track.url || !isTauri(),
+          onSelect: () => void openUrl(row.track.url).catch(() => {}),
+        },
+      );
+    } else {
+      items.push({
+        label: "Copy names",
+        hint: count,
+        onSelect: () => void copyText(targets.map((t) => searchQueryFor(t.track)).join("\n")),
+      });
+    }
+    return items;
+  };
+
   return (
     <section className="tracks">
       <div className="tracks-head">
@@ -270,26 +373,38 @@ export function TrackTable({
       </div>
 
       <div className="table-wrap">
-        <table>
+        <table className="resizable" style={{ minWidth: tableMinWidth }}>
+          <colgroup>
+            {COLUMNS.map((column) => (
+              <col key={column} style={widths[column] ? { width: widths[column] } : undefined} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th className="col-check"></th>
               <th className="col-band" title={STATE_TIP}>
                 state
+                <Resizer column="band" onResize={resize} onReset={resetWidth} />
               </th>
-              <th title="The track as Spotify lists it: artist - title.">Spotify</th>
+              <th title="The track as Spotify lists it: artist - title.">
+                Spotify
+                <Resizer column="spotify" onResize={resize} onReset={resetWidth} />
+              </th>
               <th title="The file in your rekordbox collection this track was matched to.">
                 Rekordbox match
+                <Resizer column="local" onResize={resize} onReset={resetWidth} />
               </th>
               {sortHeader("bpm", "bpm", BPM_TIP)}
               <th className="col-score" title={KEY_TIP}>
                 key
+                <Resizer column="key" onResize={resize} onReset={resetWidth} />
               </th>
               {sortHeader("energy", "energy", ENERGY_TIP)}
               {sortHeader("dance", "dance", DANCE_TIP)}
               {sortHeader("mood", "mood", MOOD_TIP)}
               <th className="col-score" title={SCORE_TIP}>
                 match conf.
+                <Resizer column="score" onResize={resize} onReset={resetWidth} />
               </th>
               <th className="col-change"></th>
             </tr>
@@ -302,6 +417,11 @@ export function TrackTable({
                   key={row.track.id}
                   className={selectedIds.has(row.track.id) ? "row selected" : "row"}
                   onClick={(event) => toggleRow(row.track.id, event.shiftKey)}
+                  onDoubleClick={() => setInfo(row)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenu({ x: event.clientX, y: event.clientY, row });
+                  }}
                 >
                   <td className="col-check">
                     <input type="checkbox" readOnly checked={selectedIds.has(row.track.id)} />
@@ -309,17 +429,37 @@ export function TrackTable({
                   <td className="col-band">
                     <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
                   </td>
-                  <td className="col-spotify" title={row.track.display}>
-                    {row.track.display}
+                  <td className="col-spotify" title={`${row.track.display} · ${formatMs(row.track.durationMs)}`}>
+                    <span className="cell-text">{row.track.display}</span>
+                    <span className="len">{formatMs(row.track.durationMs)}</span>
                   </td>
                   <td className="col-local" title={row.band === "reject" ? "" : best?.folderPath ?? ""}>
                     {row.band === "reject" || !best ? (
                       // A rejected row's best candidate scored too low to use.
                       // Showing it here reads as "this is your match", which it
                       // is not, so the row states plainly that nothing matched.
-                      <span className="muted">no local match</span>
+                      row.reason === "rejected" ? (
+                        <span className="muted">you rejected every file for this</span>
+                      ) : (
+                        <span className="muted">no local match</span>
+                      )
                     ) : (
-                      best.display
+                      <>
+                        <span className="cell-text">{best.display}</span>
+                        <LengthBadge seconds={best.lengthSeconds} spotifyMs={row.track.durationMs} />
+                      </>
+                    )}
+                    {row.reason === "rejected" && (
+                      <button
+                        className="chip rejected-chip"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onUndoDecision(row);
+                        }}
+                        data-tip="You rejected a match for this track earlier. Undo to match it afresh."
+                      >
+                        rejected · undo
+                      </button>
                     )}
                   </td>
                   <FeatureCells row={row} features={features.get(row.track.id)} />
@@ -356,6 +496,25 @@ export function TrackTable({
           </tbody>
         </table>
       </div>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.row)} onClose={() => setMenu(null)} />
+      )}
+      {info && (
+        <TrackInfoPanel
+          row={info}
+          file={files.get(info.contentId ?? info.candidates[0]?.contentId ?? "")}
+          features={features.get(info.track.id)}
+          onClose={() => setInfo(null)}
+          onChooseMatch={() => {
+            setInfo(null);
+            onInspect(info);
+          }}
+          onUndoDecision={() => {
+            setInfo(null);
+            onUndoDecision(info);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -538,6 +697,101 @@ function FeatureCells({ row, features }: { row: TrackPlan; features?: TrackFeatu
       <td className="col-score">{pct(features?.danceability)}</td>
       <td className="col-score">{pct(features?.valence)}</td>
     </>
+  );
+}
+
+const COLUMNS = ["check", "band", "spotify", "local", "bpm", "key", "energy", "dance", "mood", "score", "change"] as const;
+type Column = (typeof COLUMNS)[number];
+const WIDTHS_KEY = "rbsync.columnWidths";
+const MIN_WIDTH = 36;
+/** Used only to work out how wide the table must be; unsized columns still flex. */
+const DEFAULT_WIDTH: Record<Column, number> = {
+  check: 28, band: 92, spotify: 220, local: 220, bpm: 60, key: 60,
+  energy: 60, dance: 60, mood: 60, score: 70, change: 152,
+};
+
+function loadWidths(): Partial<Record<Column, number>> {
+  try {
+    return JSON.parse(localStorage.getItem(WIDTHS_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveWidths(widths: Partial<Record<Column, number>>) {
+  try {
+    localStorage.setItem(WIDTHS_KEY, JSON.stringify(widths));
+  } catch {
+    // Remembering widths is a convenience; the table works without it.
+  }
+}
+
+/** Drag handle on a header's right edge. Double-click restores the default width. */
+function Resizer({
+  column,
+  onResize,
+  onReset,
+}: {
+  column: Column;
+  onResize: (column: Column, width: number) => void;
+  onReset: (column: Column) => void;
+}) {
+  const start = (event: React.MouseEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const header = event.currentTarget.parentElement;
+    if (!header) return;
+    const startX = event.clientX;
+    const startWidth = header.getBoundingClientRect().width;
+    const move = (moveEvent: MouseEvent) => onResize(column, startWidth + moveEvent.clientX - startX);
+    const stop = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", stop);
+      document.body.classList.remove("resizing-column");
+    };
+    document.body.classList.add("resizing-column");
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", stop);
+  };
+  return (
+    <span
+      className="col-resizer"
+      onMouseDown={start}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onReset(column);
+      }}
+      title="Drag to resize · double-click to reset"
+    />
+  );
+}
+
+/** Differences below this are encoding and silence, not another version. */
+const LENGTH_DIFF_SECONDS = 5;
+
+/**
+ * The matched file's length, flagged when it differs from Spotify's.
+ *
+ * Length is what tells a radio edit from an extended mix, or a 1999 original
+ * from a 2008 re-release, when the names are the same.
+ */
+function LengthBadge({ seconds, spotifyMs }: { seconds: number; spotifyMs: number }) {
+  if (!seconds) return null;
+  const delta = Math.round(seconds - spotifyMs / 1000);
+  const differs = Math.abs(delta) >= LENGTH_DIFF_SECONDS;
+  return (
+    <span
+      className={differs ? "len len-diff" : "len"}
+      title={
+        differs
+          ? `${Math.abs(delta)}s ${delta > 0 ? "longer" : "shorter"} than the Spotify version — possibly a different version`
+          : "Same length as the Spotify version"
+      }
+    >
+      {formatMs(seconds * 1000)}
+      {differs ? ` (${delta > 0 ? "+" : "−"}${formatMs(Math.abs(delta) * 1000)})` : ""}
+    </span>
   );
 }
 

@@ -166,3 +166,57 @@ class TestApplyResultCarriesCoverage:
             playlist_id="p", playlist_name="N", added=0, removed=0, backup_path=""
         )
         assert (result.matched, result.review, result.missing, result.total) == (0, 0, 0, 0)
+
+
+class TestDecisionsApi:
+    def test_decide_stores_what_was_decided(self, server, service):
+        call(server, "review.decide", {"decisions": [{
+            "spotify_id": "s1", "content_id": "rb1", "accepted": False,
+            "track_display": "Chicane - Saltwater", "content_display": "Chicane - Salt Water",
+            "playlist_name": "Loos",
+        }]})
+        decision = service.cache.get_decision("s1")
+        assert (decision.track_display, decision.content_display, decision.playlist_name) == (
+            "Chicane - Saltwater", "Chicane - Salt Water", "Loos")
+
+    def test_list_returns_decisions_with_names(self, server, service):
+        service.cache.remember_decision("s1", "rb1", accepted=False, track_display="A - B",
+                                        content_display="A - B (file)", playlist_name="P")
+        rows = call(server, "decisions.list")["result"]["decisions"]
+        assert rows == [{
+            "spotifyId": "s1", "contentId": "rb1", "accepted": False,
+            "decidedAt": rows[0]["decidedAt"], "trackDisplay": "A - B",
+            "contentDisplay": "A - B (file)", "playlistName": "P",
+        }]
+
+    def test_old_decisions_are_named_from_stored_plans(self, server, service):
+        # Decisions from before names were stored: recover them from plans,
+        # without loading the rekordbox library.
+        service.cache.remember_decision("s1", "rb1", accepted=False)
+        service.cache.save_plan("pl1", snapshot_id="x", fingerprint="f", payload={
+            "playlist": {"id": "pl1", "name": "Loos"},
+            "tracks": [{"track": {"id": "s1", "display": "Chicane - Saltwater"},
+                        "candidates": [{"contentId": "rb1", "display": "Chicane - Salt Water"}]}],
+        })
+        row = call(server, "decisions.list")["result"]["decisions"][0]
+        assert row["trackDisplay"] == "Chicane - Saltwater"
+        assert row["contentDisplay"] == "Chicane - Salt Water"
+        assert row["playlistName"] == "Loos"
+
+    def test_forget_undoes_decisions(self, server, service):
+        service.cache.remember_decision("s1", "rb1", accepted=False)
+        service.cache.remember_decision("s2", "rb2", accepted=True)
+        result = call(server, "decisions.forget", {"spotifyIds": ["s1"]})["result"]
+        assert result == {"forgotten": 1}
+        assert service.cache.get_decision("s1") is None
+        assert service.cache.get_decision("s2") is not None
+
+    def test_old_decisions_are_named_from_plans_without_display(self, server, service):
+        service.cache.remember_decision("s1", "rb1", accepted=False)
+        service.cache.save_plan("pl1", snapshot_id="x", fingerprint="f", payload={
+            "playlist": {"id": "pl1", "name": "job"},
+            "tracks": [{"track": {"id": "s1", "name": "Salt Water - Original Edit", "artists": ["Chicane"]},
+                        "candidates": []}],
+        })
+        row = call(server, "decisions.list")["result"]["decisions"][0]
+        assert row["trackDisplay"] == "Chicane - Salt Water - Original Edit"

@@ -71,7 +71,54 @@ class TestCachedDecisions:
         plan = plan_playlist(PLAYLIST, [sp("s1", "Versace", "Migos", 195_000)], index, cache)
         assert plan.to_add == []
         assert plan.tracks[0].band is Band.REJECT
-        assert plan.tracks[0].reason == "cached"
+        # Marked distinctly, so the UI can say "you rejected this" and offer undo
+        # rather than presenting it as a track you do not own.
+        assert plan.tracks[0].reason == "rejected"
+
+
+class TestRejectingOneFile:
+    """A rejection means "not this file", never "I do not own this song"."""
+
+    @pytest.fixture
+    def copies(self):
+        return TrackIndex([
+            LocalTrack(id="dl", title="Salt Water - Original Edit", artist="Chicane", length_seconds=234),
+            LocalTrack(id="ext", title="Salt Water - Original Edit", artist="Chicane", length_seconds=234),
+        ])
+
+    def test_other_copies_are_still_offered(self, copies, cache):
+        cache.remember_decision("s1", "dl", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Salt Water - Original Edit", "Chicane", 234_906)], copies, cache)
+        row = plan.tracks[0]
+        assert [c.track.id for c in row.candidates] == ["ext"]
+
+    def test_the_rejected_file_is_never_offered_again(self, copies, cache):
+        cache.remember_decision("s1", "dl", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Salt Water - Original Edit", "Chicane", 234_906)], copies, cache)
+        assert "dl" not in [c.track.id for c in plan.tracks[0].candidates]
+        assert "dl" not in plan.to_add
+
+    def test_a_rejected_track_is_reviewed_not_accepted_automatically(self, copies, cache):
+        # Even a perfect remaining match waits for a person: they said no once.
+        cache.remember_decision("s1", "dl", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Salt Water - Original Edit", "Chicane", 234_906)], copies, cache)
+        assert plan.tracks[0].band is Band.REVIEW
+        assert plan.tracks[0].reason == "rejected"
+        assert plan.to_add == []
+
+    def test_marking_as_missing_rejects_every_file(self, copies, cache):
+        # "Mark as missing" records a rejection with no file: none of these.
+        cache.remember_decision("s1", "", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Salt Water - Original Edit", "Chicane", 234_906)], copies, cache)
+        assert plan.tracks[0].band is Band.REJECT
+        assert plan.tracks[0].candidates == []
+        assert plan.tracks[0].reason == "rejected"
+
+    def test_it_does_not_land_on_the_wantlist(self, copies, cache):
+        cache.remember_decision("s1", "dl", accepted=False)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Salt Water - Original Edit", "Chicane", 234_906)], copies, cache)
+        assert wantlist_rows([plan]) == []
+        assert plan.coverage.missing == 0
 
 
 class TestReviewBand:

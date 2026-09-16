@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,11 @@ class Decision:
     content_id: str
     accepted: bool
     decided_at: str
+    # What was decided about, in words. Two ids alone cannot be understood later:
+    # nobody can tell from them which song was rejected, or which file.
+    track_display: str = ""
+    content_display: str = ""
+    playlist_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +85,8 @@ class Cache:
         self._create_schema()
         if version < 2:
             self._add_history_columns()
+        if version < 5:
+            self._add_decision_context_columns()
         self._db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         self._db.commit()
 
@@ -98,6 +105,18 @@ class Cache:
                     f"ALTER TABLE sync_history ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
                 )
 
+    def _add_decision_context_columns(self) -> None:
+        """Version 5 stores what a decision was about, not only the two ids.
+
+        Existing decisions keep working and read the new columns as empty.
+        """
+        existing = {row["name"] for row in self._db.execute("PRAGMA table_info(decisions)")}
+        for column in ("track_display", "content_display", "playlist_name"):
+            if column not in existing:
+                self._db.execute(
+                    f"ALTER TABLE decisions ADD COLUMN {column} TEXT NOT NULL DEFAULT ''"
+                )
+
     def _create_schema(self) -> None:
         self._db.executescript(
             """
@@ -105,7 +124,10 @@ class Cache:
                 spotify_id TEXT PRIMARY KEY,
                 content_id TEXT NOT NULL,
                 accepted   INTEGER NOT NULL,
-                decided_at TEXT NOT NULL
+                decided_at TEXT NOT NULL,
+                track_display   TEXT NOT NULL DEFAULT '',
+                content_display TEXT NOT NULL DEFAULT '',
+                playlist_name   TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS selection (
                 playlist_id TEXT PRIMARY KEY
@@ -154,7 +176,15 @@ class Cache:
 
     # --- decisions ---------------------------------------------------------
 
-    def remember_decision(self, spotify_id: str, content_id: str, accepted: bool) -> None:
+    def remember_decision(
+        self,
+        spotify_id: str,
+        content_id: str,
+        accepted: bool,
+        track_display: str = "",
+        content_display: str = "",
+        playlist_name: str = "",
+    ) -> None:
         """Record a human judgement so it is never asked again.
 
         Rejections are stored explicitly. Treating "no row" and "rejected" as
@@ -163,14 +193,19 @@ class Cache:
         with self._lock:
             self._db.execute(
             """
-            INSERT INTO decisions (spotify_id, content_id, accepted, decided_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO decisions (spotify_id, content_id, accepted, decided_at,
+                                   track_display, content_display, playlist_name)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(spotify_id) DO UPDATE SET
                 content_id = excluded.content_id,
                 accepted   = excluded.accepted,
-                decided_at = excluded.decided_at
+                decided_at = excluded.decided_at,
+                track_display   = excluded.track_display,
+                content_display = excluded.content_display,
+                playlist_name   = excluded.playlist_name
             """,
-                (spotify_id, content_id, 1 if accepted else 0, _now()),
+                (spotify_id, content_id, 1 if accepted else 0, _now(),
+                 track_display, content_display, playlist_name),
             )
             self._db.commit()
 
@@ -179,13 +214,26 @@ class Cache:
             row = self._db.execute(
                 "SELECT * FROM decisions WHERE spotify_id = ?", (spotify_id,)
             ).fetchone()
-        if row is None:
-            return None
+        return self._decision(row) if row is not None else None
+
+    def list_decisions(self, limit: int = 1000) -> list[Decision]:
+        """Every recorded decision, newest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM decisions ORDER BY decided_at DESC, rowid DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [self._decision(row) for row in rows]
+
+    @staticmethod
+    def _decision(row) -> Decision:
         return Decision(
             spotify_id=row["spotify_id"],
             content_id=row["content_id"],
             accepted=bool(row["accepted"]),
             decided_at=row["decided_at"],
+            track_display=row["track_display"],
+            content_display=row["content_display"],
+            playlist_name=row["playlist_name"],
         )
 
     def decisions_marker(self) -> str:
@@ -327,6 +375,18 @@ class Cache:
             payload=payload,
             created_at=row["created_at"],
         )
+
+    def all_plan_payloads(self) -> list[dict]:
+        """Every stored plan's payload; unreadable ones are skipped."""
+        with self._lock:
+            rows = self._db.execute("SELECT payload FROM plans").fetchall()
+        payloads = []
+        for row in rows:
+            try:
+                payloads.append(json.loads(row["payload"]))
+            except (TypeError, ValueError):
+                continue
+        return payloads
 
     def delete_plan(self, playlist_id: str) -> None:
         with self._lock:
