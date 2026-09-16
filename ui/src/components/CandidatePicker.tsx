@@ -1,4 +1,9 @@
+import { useEffect, useState } from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+import { isTauri, rpc } from "../rpc";
 import type { TrackPlan } from "../types";
+import type { FileStatus } from "./TrackTable";
 
 interface Props {
   row: TrackPlan;
@@ -16,6 +21,28 @@ interface Props {
  * candidate the matcher considered is listed with the evidence behind its score.
  */
 export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
+  // Whether each candidate's file is actually there. Choosing a copy on an
+  // unplugged drive, or one that was deleted, puts a track in a playlist that
+  // will not play, so this has to be visible before choosing.
+  const [files, setFiles] = useState<Record<string, FileStatus> | null>(null);
+
+  useEffect(() => {
+    const contentIds = row.candidates.map((candidate) => candidate.contentId);
+    if (contentIds.length === 0) return;
+    let cancelled = false;
+    rpc
+      .call<{ files: Record<string, FileStatus> }>("tracks.verify", { contentIds })
+      .then((result) => {
+        if (!cancelled) setFiles(result.files);
+      })
+      .catch(() => {
+        if (!cancelled) setFiles({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [row]);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal picker" onClick={(event) => event.stopPropagation()}>
@@ -39,7 +66,8 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
               <thead>
                 <tr>
                   <th>rekordbox track</th>
-                  <th>file</th>
+                  <th>file and location</th>
+                  <th title="Whether the file is on disk right now.">status</th>
                   <th className="num">length</th>
                   <th className="num">kbps</th>
                   <th
@@ -58,8 +86,21 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                     className={candidate.contentId === row.contentId ? "row selected" : "row"}
                   >
                     <td title={candidate.display}>{candidate.display}</td>
-                    <td className="mono muted" title={candidate.folderPath}>
-                      {candidate.fileName}
+                    <td className="picker-file" title={candidate.folderPath}>
+                      <span className="mono">{candidate.fileName || "—"}</span>
+                      <span className="picker-path mono muted">{folderOf(candidate.folderPath)}</span>
+                    </td>
+                    <td className="picker-status">
+                      <FileBadge status={files?.[candidate.contentId]} loading={files === null} />
+                      {candidate.folderPath && isTauri() && files?.[candidate.contentId]?.status === "ok" && (
+                        <button
+                          className="chip"
+                          onClick={() => void revealItemInDir(candidate.folderPath).catch(() => {})}
+                          title={`Show in Finder: ${candidate.folderPath}`}
+                        >
+                          file
+                        </button>
+                      )}
                     </td>
                     <td
                       className={
@@ -112,6 +153,38 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
       </div>
     </div>
   );
+}
+
+function FileBadge({ status, loading }: { status?: FileStatus; loading: boolean }) {
+  if (loading) return <span className="muted">checking…</span>;
+  switch (status?.status) {
+    case "ok":
+      return <span className="band accept">on disk</span>;
+    case "offline":
+      return (
+        <span
+          className="band drive-offline"
+          title={`On ${status.volume}, which is not connected. Reconnect the drive and it plays.`}
+        >
+          {status.volume.replace("/Volumes/", "")} offline
+        </span>
+      );
+    case "missing":
+      return (
+        <span className="band missing-file" title={`Nothing at ${status.path}: moved or deleted.`}>
+          no file
+        </span>
+      );
+    default:
+      return <span className="muted">unknown</span>;
+  }
+}
+
+/** The folder a file sits in, with the home directory shortened. */
+function folderOf(path: string): string {
+  if (!path) return "";
+  const folder = path.replace(/[\\/][^\\/]*$/, "");
+  return folder.replace(/^\/Users\/[^/]+/, "~");
 }
 
 function formatDuration(ms: number): string {
