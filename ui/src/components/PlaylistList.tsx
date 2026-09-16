@@ -13,6 +13,8 @@ interface Props {
   filter: string;
   onFilter: (value: string) => void;
   loading: boolean;
+  /** Re-fetch the playlist list from Spotify. */
+  onRefresh: () => void;
   /** Playlists whose stored plan no longer reflects current state. */
   staleIds: Set<string>;
 }
@@ -29,6 +31,7 @@ export function PlaylistList({
   filter,
   onFilter,
   loading,
+  onRefresh,
   staleIds,
 }: Props) {
   const visible = playlists.filter((p) =>
@@ -50,6 +53,14 @@ export function PlaylistList({
           </button>
           <button className="link" onClick={onSelectNone}>
             none
+          </button>
+          <button
+            className="link refresh"
+            onClick={onRefresh}
+            disabled={loading}
+            data-tip="Fetch your playlists from Spotify again"
+          >
+            {loading ? <Spinner size={11} /> : "↻"} refresh
           </button>
         </div>
       </div>

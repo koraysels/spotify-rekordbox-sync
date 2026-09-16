@@ -40,6 +40,31 @@ interface Props {
 
 type SortKey = "none" | "energy" | "dance" | "mood" | "bpm";
 
+// Column hints. These say where a number comes from, because none of them are
+// yours: they are measurements, not ratings you gave.
+const STATE_TIP =
+  "matched: confidently found in your collection. review: a likely match worth checking. " +
+  "missing: not in your collection. offline / no file: matched, but the audio file is not reachable.";
+const SCORE_TIP =
+  "How sure rbsync is that the rekordbox file is the same record as the Spotify track, from 0 to 1. " +
+  "Computed from title (55%), artist (30%) and length (15%). Not a rating of the track, and not anything you set. " +
+  "Above 0.88 is accepted automatically; below 0.62 counts as missing.";
+const BPM_TIP =
+  "Tempo. From rekordbox's own analysis of the matched file; Spotify's tempo when no file matched.";
+const KEY_TIP =
+  "Musical key. From rekordbox's analysis of the matched file (your notation, e.g. 8A); " +
+  "otherwise derived from Spotify's key and mode, e.g. F#m.";
+const ENERGY_TIP =
+  "Energy 1–10: how intense and driving the track is. Measured by ReccoBeats from the audio " +
+  "(loudness, density, activity), not by you and not by rekordbox. Roughly comparable to a " +
+  "Mixed In Key energy, but a different analysis, so the numbers will not match exactly.";
+const DANCE_TIP =
+  "Danceability 0–100: how steady and rhythmic the track is — tempo stability, beat strength, regularity. " +
+  "High means an easy, locked groove; low means loose or free-form.";
+const MOOD_TIP =
+  "Mood (valence) 0–100: how positive the track sounds. Low is dark, sad or tense; high is bright, happy or euphoric. " +
+  "Independent of energy: a track can be fast and dark (high energy, low mood).";
+
 const BAND_LABEL: Record<Band, string> = {
   accept: "matched",
   review: "review",
@@ -88,7 +113,7 @@ export function TrackTable({
   const sortHeader = (key: SortKey, label: string, tip: string) => (
     <th
       className="col-score sortable"
-      data-tip={tip}
+      title={`${tip}\n\nClick to sort.`}
       onClick={() =>
         setSort((s) => (s.key === key ? (s.desc ? { key, desc: false } : { key: "none", desc: true }) : { key, desc: true }))
       }
@@ -249,15 +274,23 @@ export function TrackTable({
           <thead>
             <tr>
               <th className="col-check"></th>
-              <th className="col-band">state</th>
-              <th>Spotify</th>
-              <th>Rekordbox match</th>
-              {sortHeader("bpm", "bpm", "BPM from rekordbox, or Spotify tempo when not matched")}
-              <th className="col-score">key</th>
-              {sortHeader("energy", "energy", "Energy 1–10 (ReccoBeats audio features)")}
-              {sortHeader("dance", "dance", "Danceability 0–100")}
-              {sortHeader("mood", "mood", "Valence 0–100: sad/dark to happy/euphoric")}
-              <th className="col-score">score</th>
+              <th className="col-band" title={STATE_TIP}>
+                state
+              </th>
+              <th title="The track as Spotify lists it: artist - title.">Spotify</th>
+              <th title="The file in your rekordbox collection this track was matched to.">
+                Rekordbox match
+              </th>
+              {sortHeader("bpm", "bpm", BPM_TIP)}
+              <th className="col-score" title={KEY_TIP}>
+                key
+              </th>
+              {sortHeader("energy", "energy", ENERGY_TIP)}
+              {sortHeader("dance", "dance", DANCE_TIP)}
+              {sortHeader("mood", "mood", MOOD_TIP)}
+              <th className="col-score" title={SCORE_TIP}>
+                score
+              </th>
               <th className="col-change"></th>
             </tr>
           </thead>

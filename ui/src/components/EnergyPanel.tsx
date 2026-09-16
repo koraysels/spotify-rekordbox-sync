@@ -42,6 +42,14 @@ interface Props {
   rekordboxRunning: boolean;
 }
 
+const ENERGY_TIP =
+  "Energy 1–10: how intense and driving the track is, measured by ReccoBeats from the audio. " +
+  "This is the value written as an Energy My Tag.";
+const DANCE_TIP =
+  "Danceability 0–100: tempo stability, beat strength and regularity. High means a steady, locked groove.";
+const MOOD_TIP =
+  "Mood (valence) 0–100: dark or tense at the low end, bright or euphoric at the high end. Independent of energy.";
+
 const STATUS_LABEL: Record<ScanStatus, string> = {
   ready: "to tag",
   tagged: "tagged",
@@ -174,9 +182,10 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
     return result;
   }, [rows]);
 
-  const header = (key: SortKey, label: string, className = "") => (
+  const header = (key: SortKey, label: string, className = "", tip = "") => (
     <th
       className={`sortable ${className}`}
+      title={tip ? `${tip}\n\nClick to sort.` : "Click to sort."}
       onClick={() => setSort((s) => ({ key, desc: s.key === key ? !s.desc : key !== "display" }))}
     >
       {label}
@@ -264,11 +273,11 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
                       <tr>
                         <th className="col-band">state</th>
                         {header("display", "track")}
-                        {header("bpm", "bpm", "col-score")}
-                        {header("key", "key", "col-score")}
-                        {header("energy", "energy", "col-score")}
-                        {header("dance", "dance", "col-score")}
-                        {header("mood", "mood", "col-score")}
+                        {header("bpm", "bpm", "col-score", "Tempo from rekordbox's analysis of the file.")}
+                        {header("key", "key", "col-score", "Musical key from rekordbox's analysis.")}
+                        {header("energy", "energy", "col-score", ENERGY_TIP)}
+                        {header("dance", "dance", "col-score", DANCE_TIP)}
+                        {header("mood", "mood", "col-score", MOOD_TIP)}
                       </tr>
                     </thead>
                     <tbody>
