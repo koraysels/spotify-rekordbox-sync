@@ -1497,3 +1497,29 @@ body.resizing-column {
   cursor: col-resize;
   user-select: none;
 }
+
+/* --- candidate picker file details --- */
+
+.modal.picker {
+  width: min(1180px, 100%);
+}
+.picker-file {
+  max-width: 320px;
+}
+.picker-file .mono,
+.picker-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker-path {
+  font-size: 10px;
+  margin-top: 2px;
+}
+.picker-status {
+  white-space: nowrap;
+}
+.picker-status .chip {
+  margin-left: 6px;
+}
