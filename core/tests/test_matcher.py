@@ -253,3 +253,30 @@ class TestArtistInTitle:
         index = TrackIndex([local("1", "Somebody Else / Chase", "Giorgio Moroder", 506)])
         result = match_track(spotify("s1", "Chase", ["Giorgio Moroder"], 506_000), index, config)
         assert result.band is not Band.ACCEPT
+
+
+class TestEditOfTheSameLength:
+    """"(edit)" names a cut; when the length matches, it is the same recording."""
+
+    def test_edit_with_identical_length_is_accepted(self, config):
+        index = TrackIndex([local("1", "Kiss My Trance (edit)", "The Subs", 303)])
+        result = match_track(spotify("s1", "Kiss My Trance", ["The Subs"], 303_000), index, config)
+        assert result.band is Band.ACCEPT
+
+    def test_edit_of_a_different_length_is_not_accepted(self, config):
+        index = TrackIndex([local("1", "Kiss My Trance (Radio Edit)", "The Subs", 251)])
+        result = match_track(spotify("s1", "Kiss My Trance", ["The Subs"], 303_000), index, config)
+        assert result.band is not Band.ACCEPT
+
+    def test_remix_of_identical_length_is_still_not_accepted(self, config):
+        index = TrackIndex([local("1", "Kiss My Trance (Someone Remix)", "The Subs", 303)])
+        result = match_track(spotify("s1", "Kiss My Trance", ["The Subs"], 303_000), index, config)
+        assert result.band is not Band.ACCEPT
+
+    def test_exact_length_edit_outranks_a_different_length_radio_edit(self, config):
+        index = TrackIndex([
+            local("radio", "Kiss My Trance (Radio Edit)", "The Subs", 251),
+            local("edit", "Kiss My Trance (edit)", "The Subs", 303),
+        ])
+        result = match_track(spotify("s1", "Kiss My Trance", ["The Subs"], 303_000), index, config)
+        assert result.best.track.id == "edit"

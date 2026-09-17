@@ -128,7 +128,15 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                         `duration ${candidate.durationScore.toFixed(2)}`
                       }
                     >
-                      <strong>{candidate.score.toFixed(2)}</strong>
+                      {candidate.reason === "cached" ? (
+                        // A decision has no computed confidence; "1.00" here made a
+                        // hand-picked wrong version look like a perfect match.
+                        <span className="count review" title="You chose this file earlier. Not a computed score.">
+                          your pick
+                        </span>
+                      ) : (
+                        <strong>{candidate.score.toFixed(2)}</strong>
+                      )}
                     </td>
                     <td className="num">
                       <button className="accept" onClick={() => onChoose(candidate.contentId)}>
