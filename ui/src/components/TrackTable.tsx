@@ -463,7 +463,17 @@ export function TrackTable({
                     )}
                   </td>
                   <FeatureCells row={row} features={features.get(row.track.id)} />
-                  <td className="col-score">{row.score ? row.score.toFixed(2) : "—"}</td>
+                  <td className="col-score">
+                    {row.reason === "cached" ? (
+                      <span className="muted" title="You chose this match earlier. Not a computed score.">
+                        your pick
+                      </span>
+                    ) : row.score ? (
+                      row.score.toFixed(2)
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="col-change">
                     {row.band === "reject" ? (
                       <CopyActions track={row.track} />

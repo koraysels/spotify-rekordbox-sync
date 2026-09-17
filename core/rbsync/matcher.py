@@ -98,6 +98,9 @@ def _looks_like_another_version(
 
 _PREFIX_SEPARATOR = r"\s*[-–—/:|]\s*"
 
+# Descriptors that label a cut of the same recording rather than a new one.
+_CUT_TAGS = frozenset({"edit", "radio"})
+
 
 def _strip_artist_prefix(title: str, artist: str) -> str:
     """Drop the track's own artist from the front of its title.
@@ -344,7 +347,12 @@ class TrackIndex:
             ceiling = max(config.auto_accept - 0.01, 0.0)
             score = min(score, ceiling)
             reason = "other-version"
-        if tags != set(indexed.tags):
+        differing_tags = set(tags) ^ set(indexed.tags)
+        # "(edit)" or "(radio)" names a cut, not a different record. When the
+        # length matches too, it is the same recording under another label, and
+        # capping it lets a wrong-length version win instead.
+        same_cut = differing_tags <= _CUT_TAGS and abs(delta) <= config.duration_tolerance
+        if differing_tags and not same_cut:
             # Different mix descriptors mean different records. Keep it out of
             # the auto-accept band and let a human look.
             ceiling = max(config.auto_accept - 0.01, 0.0)

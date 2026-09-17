@@ -346,3 +346,29 @@ class TestWantlistAttribution:
                           [track], index, cache)
         rows = wantlist_rows([a, b], deduplicate=False)
         assert [r["playlist"] for r in rows] == ["Warm Up", "Peak Time"]
+
+
+class TestAcceptedDecisionShowsAlternatives:
+    """An accepted match must not hide the other files: a wrong pick has to be visible."""
+
+    @pytest.fixture
+    def versions(self):
+        return TrackIndex([
+            LocalTrack(id="radio", title="Kiss My Trance (Radio Edit)", artist="The Subs", length_seconds=251),
+            LocalTrack(id="edit", title="Kiss My Trance (edit)", artist="The Subs", length_seconds=303),
+        ])
+
+    def test_chosen_file_comes_first_then_the_others(self, versions, cache):
+        cache.remember_decision("s1", "radio", accepted=True)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Kiss My Trance", "The Subs", 303_000)], versions, cache)
+        row = plan.tracks[0]
+        assert [c.track.id for c in row.candidates] == ["radio", "edit"]
+        assert row.candidates[0].reason == "cached"
+        assert row.content_id == "radio"
+        assert plan.to_add == ["radio"]
+
+    def test_chosen_file_is_not_listed_twice(self, versions, cache):
+        cache.remember_decision("s1", "edit", accepted=True)
+        plan = plan_playlist(PLAYLIST, [sp("s1", "Kiss My Trance", "The Subs", 303_000)], versions, cache)
+        ids = [c.track.id for c in plan.tracks[0].candidates]
+        assert ids.count("edit") == 1

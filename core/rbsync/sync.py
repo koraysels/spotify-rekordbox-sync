@@ -131,6 +131,13 @@ def plan_playlist(
                     if local is not None
                     else []
                 )
+                # The other files stay listed after the chosen one. A pick made
+                # in bulk can be the wrong version, and with nothing else shown
+                # there is no way to notice or change it.
+                candidates += [
+                    candidate for candidate in index.search(track)
+                    if str(candidate.track.id) != str(decision.content_id)
+                ]
                 track_plan = TrackPlan(
                     track=track, band=Band.ACCEPT,
                     content_id=decision.content_id, score=1.0, reason="cached",
