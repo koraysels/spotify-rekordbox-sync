@@ -280,3 +280,32 @@ class TestEditOfTheSameLength:
         ])
         result = match_track(spotify("s1", "Kiss My Trance", ["The Subs"], 303_000), index, config)
         assert result.best.track.id == "edit"
+
+
+class TestPreferFilesThatExist:
+    """Among equally good copies, one that plays beats one that was deleted."""
+
+    def test_existing_copy_ranks_above_a_deleted_one(self, config, tmp_path):
+        present = tmp_path / "present.mp3"
+        present.write_bytes(b"x")
+        index = TrackIndex([
+            LocalTrack(id="gone", title="Salt Water", artist="Chicane", length_seconds=234,
+                       folder_path=str(tmp_path / "deleted.mp3"), bit_rate=320, file_size=999),
+            LocalTrack(id="here", title="Salt Water", artist="Chicane", length_seconds=234,
+                       folder_path=str(present), bit_rate=320, file_size=1),
+        ])
+        result = match_track(spotify("s1", "Salt Water", ["Chicane"], 234_000), index, config)
+        assert result.best.track.id == "here"
+        assert [c.track.id for c in result.candidates] == ["here", "gone"]
+
+    def test_score_still_outranks_file_presence(self, config, tmp_path):
+        present = tmp_path / "present.mp3"
+        present.write_bytes(b"x")
+        index = TrackIndex([
+            LocalTrack(id="right", title="Salt Water", artist="Chicane", length_seconds=234,
+                       folder_path=str(tmp_path / "deleted.mp3")),
+            LocalTrack(id="other", title="Salt Water (Remix)", artist="Chicane", length_seconds=300,
+                       folder_path=str(present)),
+        ])
+        result = match_track(spotify("s1", "Salt Water", ["Chicane"], 234_000), index, config)
+        assert result.best.track.id == "right"

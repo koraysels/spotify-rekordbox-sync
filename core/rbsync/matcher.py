@@ -16,6 +16,7 @@ Design notes worth keeping in view:
 from __future__ import annotations
 
 import math
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -128,16 +129,40 @@ def _strip_artist_prefix(title: str, artist: str) -> str:
     return stripped
 
 
+def _file_state(path: str) -> int:
+    """0 when the file is there, 1 when its drive is not connected, 2 when it is gone.
+
+    Only ever asked for a search's few candidates, so the disk is not scanned.
+    """
+    if not path or "://" in path:
+        return 2
+    if os.path.exists(path):
+        return 0
+    parts = path.split("/")
+    # /Volumes/<drive>/...: an unplugged drive is not a deleted file.
+    if len(parts) > 2 and parts[1] == "Volumes" and not os.path.isdir(f"/Volumes/{parts[2]}"):
+        return 1
+    return 2
+
+
 def _candidate_rank(candidate: MatchCandidate) -> tuple:
     """Order candidates best-first, breaking score ties deterministically.
 
-    Duplicate copies of one track score identically, so without an explicit
-    tie-break the chosen copy would depend on dictionary iteration order and
-    could differ between runs. Prefer the analysed, higher-bitrate, larger file,
-    then fall back to the id purely for stability.
+    Duplicate copies of one track score identically. Among those, a file that
+    is on disk comes before one on an unplugged drive, and both before one that
+    was deleted: choosing a deleted copy puts a track in a playlist that will
+    not play. Then the analysed, higher-bitrate, larger file, and finally the
+    id purely for stability.
     """
     analysed, bit_rate, file_size = candidate.track.quality_rank
-    return (-candidate.score, -analysed, -bit_rate, -file_size, str(candidate.track.id))
+    return (
+        -candidate.score,
+        _file_state(candidate.track.folder_path),
+        -analysed,
+        -bit_rate,
+        -file_size,
+        str(candidate.track.id),
+    )
 
 
 def _dice(a: set[str], b: set[str]) -> float:
