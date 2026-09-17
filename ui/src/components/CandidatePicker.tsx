@@ -84,6 +84,8 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                   <tr
                     key={candidate.contentId}
                     className={candidate.contentId === row.contentId ? "row selected" : "row"}
+                    onDoubleClick={() => onChoose(candidate.contentId)}
+                    title="Double-click to use this file"
                   >
                     <td title={candidate.display}>{candidate.display}</td>
                     <td className="picker-file" title={candidate.folderPath}>
