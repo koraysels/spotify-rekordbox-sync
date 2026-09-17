@@ -16,6 +16,7 @@ Design notes worth keeping in view:
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
@@ -93,6 +94,35 @@ def _looks_like_another_version(
     # The artist still has to line up, or every long track sharing a common word
     # becomes a candidate.
     return _artist_similarity(artists, other_artists) >= 0.5
+
+
+_PREFIX_SEPARATOR = r"\s*[-–—/:|]\s*"
+
+
+def _strip_artist_prefix(title: str, artist: str) -> str:
+    """Drop the track's own artist from the front of its title.
+
+    Files named "Artist - Title" often end up with that whole string as the
+    rekordbox title ("Giorgio Moroder / Chase"), sometimes twice. Left in, the
+    title no longer starts like the Spotify one and another version of the
+    track is never offered. Only the track's own artist is removed, and only
+    when a separator follows it: "Chicane Theme" by Chicane stays as it is.
+    """
+    if not title or not artist:
+        return title
+    names = [artist, *re.split(r"\s*(?:&|,|\bfeat\.?|\bft\.?|\bvs\.?|\bx\b|\band\b)\s*", artist)]
+    names = sorted({name.strip() for name in names if name and name.strip()}, key=len, reverse=True)
+    stripped = title
+    changed = True
+    while changed:
+        changed = False
+        for name in names:
+            match = re.match(rf"\s*{re.escape(name)}{_PREFIX_SEPARATOR}(?=\S)", stripped, re.IGNORECASE)
+            if match:
+                stripped = stripped[match.end():]
+                changed = True
+                break
+    return stripped
 
 
 def _candidate_rank(candidate: MatchCandidate) -> tuple:
@@ -201,7 +231,7 @@ class TrackIndex:
         self._by_id: dict[str, int] = {}
 
         for position, track in enumerate(tracks):
-            title = normalize_title(track.title)
+            title = normalize_title(_strip_artist_prefix(track.title, track.artist))
             artists = split_artists(track.artist) or (
                 [normalize_artist(track.artist)] if track.artist else []
             )

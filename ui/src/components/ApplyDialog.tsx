@@ -25,6 +25,9 @@ interface Props {
 export function ApplyDialog({ state, onClose, onReveal }: Props) {
   const added = state.results.reduce((sum, entry) => sum + entry.added, 0);
   const removed = state.results.reduce((sum, entry) => sum + entry.removed, 0);
+  // Shown separately: without it "in rekordbox" plus "missing" falls short of
+  // the total, and tracks awaiting review look like they vanished.
+  const reviewTotal = state.results.reduce((sum, entry) => sum + (entry.review ?? 0), 0);
   const backup = state.results[0]?.backupPath ?? "";
 
   return (
@@ -79,6 +82,9 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                       <th className="num">added</th>
                       <th className="num">removed</th>
                       <th className="num">in rekordbox</th>
+                      <th className="num" title="Possible matches waiting for you to accept or reject. Not written.">
+                        review
+                      </th>
                       <th className="num">missing</th>
                     </tr>
                   </thead>
@@ -91,6 +97,15 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                         <td className="num">
                           <span className="count ok">{entry.matched}</span>
                           <span className="count total"> / {entry.total}</span>
+                        </td>
+                        <td className="num">
+                          {entry.review ? (
+                            <span className="count review" title="possible matches you have not accepted yet — not added">
+                              {entry.review}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="num">
                           {entry.missing ? (
@@ -106,6 +121,14 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {reviewTotal > 0 && (
+              <p className="hint warn">
+                {reviewTotal} track{reviewTotal === 1 ? " is" : "s are"} waiting for review and{" "}
+                {reviewTotal === 1 ? "was" : "were"} not added. Accept or reject{" "}
+                {reviewTotal === 1 ? "it" : "them"} under <strong>review</strong>, then import again.
+              </p>
             )}
 
             <p className="hint">

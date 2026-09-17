@@ -222,3 +222,34 @@ class TestCompoundTitles:
         index = TrackIndex([local("1", "Salt Water - Original Edit", "Somebody Else", 234)])
         result = match_track(spotify("s1", "Saltwater", ["Chicane"], 202_500), index, config)
         assert result.band is Band.REJECT
+
+
+class TestArtistInTitle:
+    """rekordbox titles like "Giorgio Moroder / Chase" carry the artist in front."""
+
+    def test_long_version_with_artist_prefix_is_offered_for_review(self, config):
+        index = TrackIndex([local("1", "Giorgio Moroder / Chase", "Giorgio Moroder & Paul Engemann", 791)])
+        result = match_track(spotify("s1", "Chase", ["Giorgio Moroder"], 506_000), index, config)
+        assert result.band is Band.REVIEW
+        assert result.best.track.id == "1"
+
+    def test_dash_prefix_same_length_is_accepted(self, config):
+        index = TrackIndex([local("1", "Fatima Yamaha - What's a Girl to Do", "Fatima Yamaha", 449)])
+        result = match_track(spotify("s1", "What's a Girl to Do", ["Fatima Yamaha"], 447_000), index, config)
+        assert result.band is Band.ACCEPT
+
+    def test_repeated_prefix_is_removed(self, config):
+        index = TrackIndex([local("1", "Red Scan - Red Scan - Unstable Mind", "Red Scan", 300)])
+        result = match_track(spotify("s1", "Unstable Mind", ["Red Scan"], 300_000), index, config)
+        assert result.band is Band.ACCEPT
+
+    def test_title_merely_starting_with_the_artist_name_is_kept(self, config):
+        # No separator: "Chicane Theme" is the title, not "Theme" by Chicane.
+        index = TrackIndex([local("1", "Chicane Theme", "Chicane", 300)])
+        result = match_track(spotify("s1", "Theme", ["Chicane"], 300_000), index, config)
+        assert result.band is not Band.ACCEPT
+
+    def test_other_artists_prefix_is_not_removed(self, config):
+        index = TrackIndex([local("1", "Somebody Else / Chase", "Giorgio Moroder", 506)])
+        result = match_track(spotify("s1", "Chase", ["Giorgio Moroder"], 506_000), index, config)
+        assert result.band is not Band.ACCEPT
