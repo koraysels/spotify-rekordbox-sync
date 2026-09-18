@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Candidate, TrackFeatures, TrackPlan } from "../types";
 import type { FileStatus } from "./TrackTable";
+import { camelotOf } from "../keys";
 
 interface Props {
   row: TrackPlan;
@@ -11,7 +12,6 @@ interface Props {
   onUndoDecision: () => void;
 }
 
-const PITCH = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 const BAND_TEXT = {
   accept: "Matched",
@@ -200,8 +200,7 @@ function fileStatus(file?: FileStatus): ReactNode {
 }
 
 function spotifyKey(features: TrackFeatures): string {
-  if (features.key === null || features.key < 0) return "—";
-  return `${PITCH[features.key]}${features.mode === 0 ? " minor" : " major"}`;
+  return camelotOf(features) || "—";
 }
 
 function pct(value: number | null | undefined): string {

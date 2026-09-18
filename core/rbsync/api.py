@@ -30,10 +30,11 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             "reject": service.match_config().reject,
             "allowRemovals": service.allow_removals(),
             "onlySyncable": service.only_syncable(),
+            "tagFeaturesOnSync": service.tag_features_on_sync(),
         }
 
     def settings_set(clientId=None, autoAccept=None, reject=None, allowRemovals=None,
-                     onlySyncable=None, **_):
+                     onlySyncable=None, tagFeaturesOnSync=None, **_):
         if clientId is not None:
             service.cache.set_setting("spotify_client_id", str(clientId))
         if autoAccept is not None:
@@ -44,6 +45,8 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             service.cache.set_setting("allow_removals", "1" if allowRemovals else "0")
         if onlySyncable is not None:
             service.cache.set_setting("only_syncable", "1" if onlySyncable else "0")
+        if tagFeaturesOnSync is not None:
+            service.cache.set_setting("tag_features_on_sync", "1" if tagFeaturesOnSync else "0")
         return settings_get()
 
     def auth_begin(redirectUri="http://127.0.0.1:8888/callback", **_):
@@ -160,6 +163,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
                     "review": r.review,
                     "missing": r.missing,
                     "total": r.total,
+                    "tagged": r.tagged,
                 }
                 for r in results
             ]

@@ -18,6 +18,7 @@ from typing import Callable
 
 import httpx
 
+from .keys import camelot_from_pitch
 from .matcher import TrackIndex
 from .models import LocalTrack, SpotifyTrack
 from .normalize import normalize_artist, normalize_title
@@ -37,6 +38,31 @@ def energy_level(energy: float) -> int:
     """Map a 0..1 energy value onto the 1..10 scale DJs tag with."""
     clamped = min(max(energy, 0.0), 1.0)
     return min(10, max(1, int(clamped * 10 + 0.5)))
+
+
+def feature_levels(data: dict | None) -> dict:
+    """energyLevel, danceLevel and moodLevel (1..10) for whichever values are known."""
+    if not data:
+        return {}
+    levels = {}
+    for source, key in (("energy", "energyLevel"), ("danceability", "danceLevel"), ("valence", "moodLevel")):
+        if data.get(source) is not None:
+            levels[key] = energy_level(float(data[source]))
+    return levels
+
+
+def tag_levels(data: dict | None) -> dict[str, int]:
+    """The same levels keyed by My Tag kind: {"Energy": 7, "Dance": 6, "Mood": 3}."""
+    levels = feature_levels(data)
+    names = {"energyLevel": "Energy", "danceLevel": "Dance", "moodLevel": "Mood"}
+    return {names[key]: value for key, value in levels.items()}
+
+
+def camelot_of(data: dict | None) -> str:
+    """Camelot key for a features dict, or empty when Spotify gave none."""
+    if not data:
+        return ""
+    return camelot_from_pitch(data.get("key"), data.get("mode"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +85,8 @@ class AudioFeatures:
 
     def as_dict(self) -> dict:
         data = asdict(self)
-        data["energyLevel"] = self.energy_level
+        data.update(feature_levels(data))
+        data["camelot"] = camelot_of(data)
         return data
 
     @classmethod

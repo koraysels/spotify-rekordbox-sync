@@ -30,6 +30,7 @@ from pyrekordbox import Rekordbox6Database
 from pyrekordbox.config import get_config
 from pyrekordbox.db6.database import SPECIAL_PLAYLIST_IDS
 
+from .keys import to_camelot
 from .models import LocalTrack, RbPlaylist
 
 log = logging.getLogger(__name__)
@@ -53,15 +54,31 @@ SIDECARS = ("-wal", "-shm")
 ATTR_PLAYLIST = 0
 ATTR_FOLDER = 1
 
-# My Tag column holding "Energy 1".."Energy 10".
-ENERGY_COLUMN = "Energy"
+# My Tag column holding "Energy N", "Dance N" and "Mood N" (1..10). One column
+# for all three: rekordbox allows only four, and most libraries use them.
+FEATURE_COLUMN = "Vibe"
+# Also recognised, so an existing column is reused rather than a second made.
+FEATURE_COLUMN_NAMES = {"vibe", "energy"}
+FEATURE_KINDS = ("Energy", "Dance", "Mood")
 DEFAULT_COLUMN_NAME = "Untitled Column"
 MAX_MY_TAG_COLUMNS = 4
 _ENERGY_RE = re.compile(r"\benergy\s*(\d{1,2})\b", re.IGNORECASE)
 
 
+def feature_tag_name(kind: str, level: int) -> str:
+    return f"{kind} {level}"
+
+
+def parse_feature_tag(name: str) -> tuple[str, int] | None:
+    """("Energy", 8) for "Energy 8"; None for anything else."""
+    match = re.fullmatch(r"\s*(energy|dance|mood)\s*(\d{1,2})\s*", name or "", re.IGNORECASE)
+    if not match or not 1 <= int(match.group(2)) <= 10:
+        return None
+    return match.group(1).capitalize(), int(match.group(2))
+
+
 def energy_tag_name(level: int) -> str:
-    return f"Energy {level}"
+    return feature_tag_name("Energy", level)
 
 
 def parse_energy_tag(name: str) -> int | None:
@@ -364,41 +381,43 @@ class RekordboxLibrary:
                     analysed=_as_int(content.Analysed),
                     # rekordbox stores BPM multiplied by 100.
                     bpm=round(_as_float(content.BPM) / 100.0, 2),
-                    key=content.KeyName or "",
+                    # Always Camelot: rekordbox stores whichever notation its
+                    # preferences use, and DJs mix by Camelot number.
+                    key=to_camelot(content.KeyName or ""),
                     comment=content.Commnt or "",
                 )
             )
         return tracks
 
-    # --- energy tags -------------------------------------------------------
+    # --- feature tags (energy, dance, mood) -----------------------------------
 
-    def _energy_column(self, create: bool):
-        """The My Tag column energy tags live under.
+    def _feature_column(self, create: bool):
+        """The My Tag column the Energy, Dance and Mood tags live under.
 
-        rekordbox allows four columns. An existing "Energy" column is used; a
-        free slot gets a new one; a column still carrying rekordbox's default
-        name is taken over, since nobody chose that name. Columns the user named
-        are never repurposed.
+        rekordbox allows four columns, so all three kinds share one. An existing
+        "Vibe" (or older "Energy") column is used; a free slot gets a new one; a
+        column still carrying rekordbox's default name is taken over, since
+        nobody chose that name. Columns the user named are never repurposed.
         """
         columns = [
             t for t in self._db.get_my_tag(ParentID="root").all()
             if _as_int(t.Attribute) == ATTR_FOLDER
         ]
         for column in columns:
-            if (column.Name or "").strip().lower() == ENERGY_COLUMN.lower():
+            if (column.Name or "").strip().lower() in FEATURE_COLUMN_NAMES:
                 return column
         if not create:
             return None
         if len(columns) < MAX_MY_TAG_COLUMNS:
             seq = max((_as_int(c.Seq) for c in columns), default=0) + 1
-            return self._add_my_tag(ENERGY_COLUMN, parent_id="root", seq=seq, attribute=ATTR_FOLDER)
+            return self._add_my_tag(FEATURE_COLUMN, parent_id="root", seq=seq, attribute=ATTR_FOLDER)
         for column in sorted(columns, key=lambda c: _as_int(c.Seq)):
             if (column.Name or "").strip() == DEFAULT_COLUMN_NAME:
-                column.Name = ENERGY_COLUMN
+                column.Name = FEATURE_COLUMN
                 return column
         raise RekordboxError(
             "rekordbox allows four My Tag columns and all four are named. Rename one "
-            f'to "{ENERGY_COLUMN}" in rekordbox (My Tag settings) and try again.'
+            f'to "{FEATURE_COLUMN}" in rekordbox (My Tag settings) and try again.'
         )
 
     def _add_my_tag(self, name: str, parent_id: str, seq: int, attribute: int):
@@ -419,77 +438,103 @@ class RekordboxLibrary:
         self._db.flush()
         return tag
 
-    def energy_tags(self) -> dict[str, int]:
-        """content_id -> energy level currently tagged through My Tags."""
-        column = self._energy_column(create=False)
+    def feature_tags(self) -> dict[str, dict[str, int]]:
+        """content_id -> {"Energy": 7, "Dance": 6, "Mood": 3} as currently tagged."""
+        column = self._feature_column(create=False)
         if column is None:
             return {}
-        levels = {
-            str(tag.ID): level
+        by_tag = {
+            str(tag.ID): parsed
             for tag in self._db.get_my_tag(ParentID=str(column.ID)).all()
-            if (level := parse_energy_tag(tag.Name or "")) is not None
+            if (parsed := parse_feature_tag(tag.Name or "")) is not None
         }
-        result: dict[str, int] = {}
+        result: dict[str, dict[str, int]] = {}
         for link in self._db.get_my_tag_songs().all():
-            level = levels.get(str(link.MyTagID))
-            if level is not None:
-                result[str(link.ContentID)] = level
+            parsed = by_tag.get(str(link.MyTagID))
+            if parsed is not None:
+                kind, level = parsed
+                result.setdefault(str(link.ContentID), {})[kind] = level
         return result
 
-    def set_energy_tags(self, levels: dict[str, int]) -> int:
-        """Tag each track with "Energy N", replacing any other energy tag it had.
+    def energy_tags(self) -> dict[str, int]:
+        """content_id -> energy level currently tagged through My Tags."""
+        return {
+            content_id: kinds["Energy"]
+            for content_id, kinds in self.feature_tags().items()
+            if "Energy" in kinds
+        }
 
-        Returns how many tracks changed. Tracks already carrying the right tag
-        are left alone, so re-running is a no-op.
+    def set_energy_tags(self, levels: dict[str, int]) -> int:
+        return self.set_feature_tags({cid: {"Energy": level} for cid, level in levels.items()})
+
+    def set_feature_tags(self, levels: dict[str, dict[str, int]]) -> int:
+        """Tag tracks with "Energy N", "Dance N" and "Mood N".
+
+        Each kind given replaces that kind's previous tag on the track; kinds not
+        given are left as they are. Returns how many tracks changed. Tracks that
+        already carry exactly these tags are untouched, so re-running is a no-op.
         """
         from pyrekordbox.db6 import tables
 
-        if not levels:
-            return 0
-        column = self._energy_column(create=True)
-        tags = {
-            level: tag
-            for tag in self._db.get_my_tag(ParentID=str(column.ID)).all()
-            if (level := parse_energy_tag(tag.Name or "")) is not None
+        wanted = {
+            str(content_id): {
+                kind: min(10, max(1, int(level)))
+                for kind, level in kinds.items()
+                if kind in FEATURE_KINDS and level is not None
+            }
+            for content_id, kinds in levels.items()
         }
-        energy_tag_ids = {str(tag.ID): level for level, tag in tags.items()}
-        other = [t for t in self._db.get_my_tag(ParentID=str(column.ID)).all()
-                 if str(t.ID) not in energy_tag_ids]
-        next_seq = max((_as_int(t.Seq) for t in [*tags.values(), *other]), default=0) + 1
+        wanted = {cid: kinds for cid, kinds in wanted.items() if kinds}
+        if not wanted:
+            return 0
 
-        links_by_content: dict[str, list] = {}
+        column = self._feature_column(create=True)
+        children = self._db.get_my_tag(ParentID=str(column.ID)).all()
+        tags: dict[tuple[str, int], object] = {}
+        for tag in children:
+            parsed = parse_feature_tag(tag.Name or "")
+            if parsed is not None:
+                tags[parsed] = tag
+        tag_ids = {str(tag.ID): key for key, tag in tags.items()}
+        next_seq = max((_as_int(t.Seq) for t in children), default=0) + 1
+
+        links_by_content: dict[str, dict[str, list]] = {}
         for link in self._db.get_my_tag_songs().all():
-            if str(link.MyTagID) in energy_tag_ids:
-                links_by_content.setdefault(str(link.ContentID), []).append(link)
+            key = tag_ids.get(str(link.MyTagID))
+            if key is not None:
+                links_by_content.setdefault(str(link.ContentID), {}).setdefault(key[0], []).append(link)
 
         changed = 0
-        for content_id, level in levels.items():
-            content_id = str(content_id)
-            level = min(10, max(1, int(level)))
-            existing = links_by_content.get(content_id, [])
-            if [energy_tag_ids[str(l.MyTagID)] for l in existing] == [level]:
-                continue
-            for link in existing:
-                self._db.delete(link)
-            if level not in tags:
-                tags[level] = self._add_my_tag(
-                    energy_tag_name(level), parent_id=str(column.ID), seq=next_seq, attribute=ATTR_PLAYLIST
+        for content_id, kinds in wanted.items():
+            current = links_by_content.get(content_id, {})
+            track_changed = False
+            for kind, level in kinds.items():
+                existing = current.get(kind, [])
+                if [tag_ids[str(l.MyTagID)][1] for l in existing] == [level]:
+                    continue
+                for link in existing:
+                    self._db.delete(link)
+                if (kind, level) not in tags:
+                    tags[(kind, level)] = self._add_my_tag(
+                        feature_tag_name(kind, level), parent_id=str(column.ID),
+                        seq=next_seq, attribute=ATTR_PLAYLIST,
+                    )
+                    tag_ids[str(tags[(kind, level)].ID)] = (kind, level)
+                    next_seq += 1
+                now = datetime.now()
+                self._db.add(
+                    tables.DjmdSongMyTag.create(
+                        ID=str(self._db.generate_unused_id(tables.DjmdSongMyTag, is_28_bit=True)),
+                        MyTagID=str(tags[(kind, level)].ID),
+                        ContentID=content_id,
+                        TrackNo=1,
+                        UUID=str(uuid.uuid4()),
+                        created_at=now,
+                        updated_at=now,
+                    )
                 )
-                energy_tag_ids[str(tags[level].ID)] = level
-                next_seq += 1
-            now = datetime.now()
-            self._db.add(
-                tables.DjmdSongMyTag.create(
-                    ID=str(self._db.generate_unused_id(tables.DjmdSongMyTag, is_28_bit=True)),
-                    MyTagID=str(tags[level].ID),
-                    ContentID=content_id,
-                    TrackNo=1,
-                    UUID=str(uuid.uuid4()),
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            changed += 1
+                track_changed = True
+            changed += 1 if track_changed else 0
         return changed
 
     def list_playlists(self) -> list[RbPlaylist]:

@@ -23,6 +23,7 @@ export function SettingsPanel({
   const [reject, setReject] = useState(settings.reject);
   const [allowRemovals, setAllowRemovals] = useState(settings.allowRemovals);
   const [onlySyncable, setOnlySyncable] = useState(settings.onlySyncable);
+  const [tagFeatures, setTagFeatures] = useState(settings.tagFeaturesOnSync ?? true);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -70,6 +71,23 @@ export function SettingsPanel({
             Spotify only shares the contents of playlists you own or collaborate on.
             Playlists you merely follow cannot be read at all, so they are hidden. Turn
             this off to list them anyway.
+          </p>
+        </section>
+
+        <section>
+          <h3>Importing</h3>
+          <label>
+            <input
+              type="checkbox"
+              checked={tagFeatures}
+              onChange={(event) => setTagFeatures(event.target.checked)}
+            />
+            Tag energy, dance and mood when importing
+          </label>
+          <p className="hint">
+            Writes <code>Energy N</code>, <code>Dance N</code> and <code>Mood N</code> My Tags
+            (1–10) on every matched track, in a My Tag column called <code>Vibe</code>. Only
+            values rbsync already has are used; nothing extra is looked up.
           </p>
         </section>
 
@@ -128,7 +146,14 @@ export function SettingsPanel({
           <button
             className="primary"
             onClick={() => {
-              onSave({ clientId, autoAccept, reject, allowRemovals, onlySyncable });
+              onSave({
+                clientId,
+                autoAccept,
+                reject,
+                allowRemovals,
+                onlySyncable,
+                tagFeaturesOnSync: tagFeatures,
+              });
               onClose();
             }}
           >

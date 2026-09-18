@@ -3,6 +3,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { TrackInfoPanel } from "./TrackInfoPanel";
+import { camelotOf } from "../keys";
 
 import { copyText, searchQueryFor } from "../clipboard";
 import { isTauri } from "../rpc";
@@ -676,17 +677,13 @@ function CopyActions({ track }: { track: SpotifyTrack }) {
   );
 }
 
-const PITCH = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 /** BPM/key prefer the rekordbox analysis of the matched file; energy etc. come from Spotify's track. */
 function FeatureCells({ row, features }: { row: TrackPlan; features?: TrackFeatures }) {
   const local = row.band === "reject" ? undefined : row.candidates[0];
   const bpm = local?.bpm || features?.tempo || 0;
-  const key =
-    local?.key ||
-    (features?.key !== null && features?.key !== undefined && features.key >= 0
-      ? `${PITCH[features.key]}${features.mode === 0 ? "m" : ""}`
-      : "");
+  // Camelot throughout: rekordbox's analysis first, then Spotify's key.
+  const key = local?.key || camelotOf(features);
   const pct = (value: number | null | undefined) =>
     value === null || value === undefined ? "—" : String(Math.round(value * 100));
   return (

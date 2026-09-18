@@ -84,4 +84,53 @@ class TestEnergyTags:
             library.set_energy_tags({ids[0]: 4})
         columns = [t for t in library._db.get_my_tag(ParentID="root").all() if int(t.Attribute or 0) == 1]
         assert len(columns) <= 4
-        assert "Energy" in [c.Name for c in columns]
+        assert "Vibe" in [c.Name for c in columns]
+
+
+class TestFeatureTagNames:
+    def test_parse_each_kind(self):
+        from rbsync.rekordbox import parse_feature_tag
+        assert parse_feature_tag("Energy 8") == ("Energy", 8)
+        assert parse_feature_tag("Dance 6") == ("Dance", 6)
+        assert parse_feature_tag("mood 10") == ("Mood", 10)
+        assert parse_feature_tag("Mood 11") is None
+        assert parse_feature_tag("My Comment") is None
+
+
+class TestFeatureTags:
+    """Energy, dance and mood as My Tags in one column."""
+
+    def test_all_three_kinds_read_back_after_reopen(self, db_copy, library, ids):
+        with library.transaction():
+            assert library.set_feature_tags({ids[0]: {"Energy": 8, "Dance": 6, "Mood": 3}}) == 1
+        library.close()
+        with RekordboxLibrary.open(db_copy) as reopened:
+            assert reopened.feature_tags()[ids[0]] == {"Energy": 8, "Dance": 6, "Mood": 3}
+
+    def test_one_kind_is_replaced_without_touching_the_others(self, library, ids):
+        with library.transaction():
+            library.set_feature_tags({ids[0]: {"Energy": 8, "Dance": 6, "Mood": 3}})
+        with library.transaction():
+            assert library.set_feature_tags({ids[0]: {"Mood": 9}}) == 1
+        assert library.feature_tags()[ids[0]] == {"Energy": 8, "Dance": 6, "Mood": 9}
+
+    def test_same_values_again_change_nothing(self, library, ids):
+        with library.transaction():
+            library.set_feature_tags({ids[0]: {"Energy": 8, "Dance": 6}})
+        with library.transaction():
+            assert library.set_feature_tags({ids[0]: {"Energy": 8, "Dance": 6}}) == 0
+
+    def test_they_share_one_column_named_vibe(self, library, ids):
+        with library.transaction():
+            library.set_feature_tags({ids[0]: {"Energy": 8, "Dance": 6, "Mood": 3}})
+        columns = [t for t in library._db.get_my_tag(ParentID="root").all() if int(t.Attribute or 0) == 1]
+        assert len(columns) <= 4
+        vibe = [c for c in columns if c.Name == "Vibe"]
+        assert len(vibe) == 1
+        names = {t.Name for t in library._db.get_my_tag(ParentID=str(vibe[0].ID)).all()}
+        assert {"Energy 8", "Dance 6", "Mood 3"} <= names
+
+    def test_energy_helpers_still_work(self, library, ids):
+        with library.transaction():
+            library.set_energy_tags({ids[0]: 7})
+        assert library.energy_tags()[ids[0]] == 7

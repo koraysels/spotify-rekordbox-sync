@@ -109,3 +109,48 @@ def test_apply_then_rescan_shows_tagged(service, db_copy, monkeypatch, tmp_path)
     assert result["changed"] == len(rows)
     again = {r["contentId"]: r["status"] for r in service.scan_energy([playlist])["tracks"]}
     assert all(again[r["contentId"]] == "tagged" for r in rows)
+
+
+def test_import_writes_known_features_as_tags(service, db_copy, monkeypatch, tmp_path):
+    """Importing a playlist tags matched tracks with energy, dance and mood already known."""
+    from rbsync.matcher import Band
+    from rbsync.models import SpotifyPlaylist
+    from rbsync.sync import PlaylistPlan, SyncPlan, TrackPlan
+
+    monkeypatch.setattr(app_module.paths, "backups_dir", lambda: tmp_path / "backups")
+    with RekordboxLibrary.open(db_copy) as library:
+        content_id = next(t.id for t in library.load_tracks() if t.title)
+    track = SpotifyTrack(id="sp-known", name="x", artists=["y"], album="", duration_ms=1000)
+    service.cache.save_features({"sp-known": AudioFeatures(energy=0.72, danceability=0.55, valence=0.31).as_dict()})
+    plan = SyncPlan(playlists=[PlaylistPlan(
+        playlist=SpotifyPlaylist(id="pl", name="rbsync test tags", track_count=1),
+        tracks=[TrackPlan(track=track, band=Band.ACCEPT, content_id=content_id)],
+        to_add=[content_id],
+    )])
+
+    results = service.apply(plan)
+
+    assert results[0].tagged == 1
+    with RekordboxLibrary.open(db_copy) as library:
+        assert library.feature_tags()[content_id] == {"Energy": 7, "Dance": 6, "Mood": 3}
+    assert FakeRecco.calls == []  # only cached values: nothing fetched while importing
+
+
+def test_import_can_skip_tagging(service, db_copy, monkeypatch, tmp_path):
+    from rbsync.matcher import Band
+    from rbsync.models import SpotifyPlaylist
+    from rbsync.sync import PlaylistPlan, SyncPlan, TrackPlan
+
+    monkeypatch.setattr(app_module.paths, "backups_dir", lambda: tmp_path / "backups")
+    service.cache.set_setting("tag_features_on_sync", "0")
+    with RekordboxLibrary.open(db_copy) as library:
+        content_id = next(t.id for t in library.load_tracks() if t.title)
+    track = SpotifyTrack(id="sp-known", name="x", artists=["y"], album="", duration_ms=1000)
+    service.cache.save_features({"sp-known": AudioFeatures(energy=0.72).as_dict()})
+    plan = SyncPlan(playlists=[PlaylistPlan(
+        playlist=SpotifyPlaylist(id="pl", name="rbsync test tags", track_count=1),
+        tracks=[TrackPlan(track=track, band=Band.ACCEPT, content_id=content_id)],
+        to_add=[content_id],
+    )])
+    results = service.apply(plan)
+    assert results[0].tagged == 0

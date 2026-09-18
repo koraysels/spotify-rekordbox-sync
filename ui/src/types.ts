@@ -31,6 +31,10 @@ export interface Candidate {
 export interface TrackFeatures {
   energy: number;
   energyLevel: number;
+  danceLevel?: number;
+  moodLevel?: number;
+  /** Camelot key, e.g. "8A". Missing on features cached by older versions. */
+  camelot?: string;
   danceability: number | null;
   valence: number | null;
   tempo: number | null;
@@ -100,6 +104,7 @@ export interface Settings {
   reject: number;
   allowRemovals: boolean;
   onlySyncable: boolean;
+  tagFeaturesOnSync: boolean;
 }
 
 export interface ApplyResult {
@@ -112,6 +117,8 @@ export interface ApplyResult {
   review: number;
   missing: number;
   total: number;
+  /** Tracks whose Energy/Dance/Mood My Tags were written. */
+  tagged?: number;
 }
 
 export interface Decision {

@@ -30,6 +30,8 @@ interface ScanRow {
   spotifyId: string;
   features: Features | null;
   energyLevel: number | null;
+  danceLevel: number | null;
+  moodLevel: number | null;
   taggedEnergy: number | null;
   commentEnergy: number | null;
   status: ScanStatus;
@@ -139,7 +141,21 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
     setError(null);
     setBusy("Writing energy tags…");
     try {
-      const levels = Object.fromEntries(writable.map((row) => [row.contentId, row.energyLevel]));
+      // Energy, Dance and Mood together; any that are unknown are left out.
+      const levels = Object.fromEntries(
+        writable.map((row) => [
+          row.contentId,
+          Object.fromEntries(
+            (
+              [
+                ["Energy", row.energyLevel],
+                ["Dance", row.danceLevel],
+                ["Mood", row.moodLevel],
+              ] as const
+            ).filter(([, value]) => value !== null && value !== undefined),
+          ),
+        ]),
+      );
       const result = await rpc.call<{ changed: number; backupPath: string }>("energy.apply", { levels });
       setNotice(`Tagged ${result.changed} track${result.changed === 1 ? "" : "s"} in rekordbox. Backup taken first.`);
       await scan();
@@ -219,8 +235,9 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
         <h2>Energy</h2>
         <p className="hint">
           Pick rekordbox playlists or folders and scan them. Each track is looked up on Spotify, its audio
-          features come from ReccoBeats, and the energy (1–10) can be written back as an{" "}
-          <code>Energy N</code> My Tag. Tracks that already have a Mixed In Key energy in their comment are
+          features come from ReccoBeats, and energy, dance and mood (1–10) are written back as{" "}
+          <code>Energy N</code>, <code>Dance N</code> and <code>Mood N</code> My Tags, in a My Tag column
+          called <code>Vibe</code>. Tracks that already have a Mixed In Key energy in their comment are
           left alone unless you allow it.
         </p>
 
@@ -314,10 +331,18 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
         </div>
 
         <div className="modal-actions">
-          {busy && (
+          {busy ? (
             <span className="muted">
               <Spinner /> {busy}
             </span>
+          ) : (
+            rekordboxRunning &&
+            writable.length > 0 && (
+              // Said out loud, not only in a tooltip: a disabled-looking button
+              // with no reason is what made this seem broken. The core checks
+              // again when writing, so a stale "running" never blocks.
+              <span className="hint warn">Quit rekordbox completely before tagging.</span>
+            )
           )}
           <button onClick={onClose}>Close</button>
           <button disabled={chosen.size === 0 || busy !== null} onClick={() => void scan()}>
@@ -325,8 +350,8 @@ export function EnergyPanel({ onClose, rekordboxRunning }: Props) {
           </button>
           <button
             className="primary"
-            disabled={writable.length === 0 || busy !== null || rekordboxRunning}
-            title={rekordboxRunning ? "Quit rekordbox before writing" : ""}
+            disabled={writable.length === 0 || busy !== null}
+            title="Writes Energy, Dance and Mood My Tags. rekordbox must be closed; a backup is made first."
             onClick={() => void apply()}
           >
             Tag {writable.length} in rekordbox

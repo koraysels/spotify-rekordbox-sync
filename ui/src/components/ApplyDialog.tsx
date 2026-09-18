@@ -29,6 +29,7 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
   // the total, and tracks awaiting review look like they vanished.
   const reviewTotal = state.results.reduce((sum, entry) => sum + (entry.review ?? 0), 0);
   const backup = state.results[0]?.backupPath ?? "";
+  const tagged = state.results.reduce((sum, entry) => sum + (entry.tagged ?? 0), 0);
 
   return (
     <div className="modal-backdrop">
@@ -65,6 +66,12 @@ export function ApplyDialog({ state, onClose, onReveal }: Props) {
                 <span>Playlists written</span>
                 <span className="num">{state.results.length}</span>
               </div>
+              {tagged > 0 && (
+                <div className="health-row" title="Energy, Dance and Mood My Tags, in the Vibe column">
+                  <span>Tracks tagged with energy, dance and mood</span>
+                  <span className="num">{tagged}</span>
+                </div>
+              )}
               {added === 0 && state.results.length > 0 && (
                 <p className="hint">
                   Nothing new to add — rekordbox already had every matched track from

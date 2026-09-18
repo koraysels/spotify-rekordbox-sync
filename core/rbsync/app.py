@@ -17,7 +17,7 @@ from pathlib import Path
 from . import paths
 from .branding import default_client_id
 from .cache import Cache
-from .features import ReccoBeatsClient, resolve_spotify_track
+from .features import ReccoBeatsClient, resolve_spotify_track, tag_levels
 from .matcher import Band, MatchConfig, TrackIndex
 from .models import Coverage, SpotifyPlaylist, SpotifyTrack
 from .rekordbox import (
@@ -44,6 +44,7 @@ SETTING_AUTO_ACCEPT = "auto_accept"
 SETTING_REJECT = "reject"
 SETTING_ALLOW_REMOVALS = "allow_removals"
 SETTING_ONLY_SYNCABLE = "only_syncable"
+SETTING_TAG_FEATURES = "tag_features_on_sync"
 
 # Where macOS mounts external drives. Paths beneath a directory here belong to a
 # volume that may simply not be plugged in.
@@ -64,6 +65,8 @@ class ApplyResult:
     review: int = 0
     missing: int = 0
     total: int = 0
+    # Tracks whose Energy/Dance/Mood My Tags were written or changed.
+    tagged: int = 0
 
 
 class AppService:
@@ -97,6 +100,10 @@ class AppService:
 
     def allow_removals(self) -> bool:
         return self.cache.get_setting(SETTING_ALLOW_REMOVALS, "0") == "1"
+
+    def tag_features_on_sync(self) -> bool:
+        """Write Energy, Dance and Mood My Tags when importing. On by default."""
+        return self.cache.get_setting(SETTING_TAG_FEATURES, "1") == "1"
 
     def only_syncable(self) -> bool:
         """Hide playlists Spotify will not serve. On by default.
@@ -331,6 +338,30 @@ class AppService:
         The safety gate runs first and raises rather than proceeding: refusing
         to write is always recoverable, writing into a running rekordbox is not.
         """
+        # Energy, Dance and Mood for the matched tracks, from what is already
+        # cached. Nothing is fetched here: an import must not turn into a
+        # thousand-track lookup nobody asked for.
+        tag_plan: list[dict[str, dict[str, int]]] = []
+        if self.tag_features_on_sync():
+            spotify_ids = [
+                track_plan.track.id
+                for playlist_plan in plan.playlists
+                for track_plan in playlist_plan.tracks
+                if track_plan.band is Band.ACCEPT and track_plan.content_id
+            ]
+            cached = self.cache.get_features(spotify_ids)
+            for playlist_plan in plan.playlists:
+                levels: dict[str, dict[str, int]] = {}
+                for track_plan in playlist_plan.tracks:
+                    if track_plan.band is not Band.ACCEPT or not track_plan.content_id:
+                        continue
+                    kinds = tag_levels(cached.get(track_plan.track.id))
+                    if kinds:
+                        levels[str(track_plan.content_id)] = kinds
+                tag_plan.append(levels)
+        else:
+            tag_plan = [{} for _ in plan.playlists]
+
         if progress:
             progress("Checking that rekordbox is closed")
         backup = ensure_safe_to_write(self.db_path, paths.backups_dir())
@@ -341,13 +372,14 @@ class AppService:
         with RekordboxLibrary.open(self.db_path) as library:
             with library.transaction():
                 folder = library.ensure_folder(SPOTIFY_FOLDER)
-                for playlist_plan in plan.playlists:
+                for playlist_plan, levels in zip(plan.playlists, tag_plan):
                     name = playlist_plan.playlist.name
                     if progress:
                         progress(f"Writing {name}")
                     target = library.ensure_playlist(name, folder.id)
                     added = library.add_tracks(target.id, playlist_plan.to_add)
                     removed = library.remove_tracks(target.id, playlist_plan.to_remove)
+                    tagged = library.set_feature_tags(levels) if levels else 0
                     coverage = playlist_plan.coverage
                     results.append(
                         ApplyResult(
@@ -360,6 +392,7 @@ class AppService:
                             review=coverage.review,
                             missing=coverage.missing,
                             total=coverage.total,
+                            tagged=tagged,
                         )
                     )
 
@@ -639,7 +672,7 @@ class AppService:
         """
         with RekordboxLibrary.open(self.db_path) as library:
             content_ids = self._expand_playlists(library, playlist_ids)
-            tagged = library.energy_tags()
+            tagged = library.feature_tags()
 
         tracks = [t for t in (self.index.get(cid) for cid in content_ids) if t is not None]
         resolutions = self.cache.get_resolutions()
@@ -686,16 +719,17 @@ class AppService:
         for track in tracks:
             key, source = keys.get(track.id, ("", ""))
             data = features.get(key) if key else None
-            level = data["energyLevel"] if data else None
+            kinds = tag_levels(data)
+            level = kinds.get("Energy")
             mik = comment_energy(track.comment)
-            current = tagged.get(track.id)
+            current = tagged.get(track.id, {})
             if track.id not in keys:
                 status = "pending"
             elif not key:
                 status = "unresolved"
             elif data is None:
                 status = "no-data"
-            elif current == level:
+            elif all(current.get(kind) == value for kind, value in kinds.items()):
                 status = "tagged"
             else:
                 status = "ready"
@@ -708,7 +742,10 @@ class AppService:
                 "spotifyId": key if source == "spotify" else "",
                 "features": data,
                 "energyLevel": level,
-                "taggedEnergy": current,
+                "danceLevel": kinds.get("Dance"),
+                "moodLevel": kinds.get("Mood"),
+                "taggedEnergy": current.get("Energy"),
+                "taggedLevels": current,
                 "commentEnergy": mik,
                 "status": status,
             })
@@ -725,7 +762,11 @@ class AppService:
             with library.transaction():
                 if progress:
                     progress(f"Tagging {len(levels)} tracks")
-                changed = library.set_energy_tags({str(k): int(v) for k, v in levels.items()})
+                # Each value is either an energy level or {"Energy": 7, "Dance": 6, "Mood": 3}.
+                changed = library.set_feature_tags({
+                    str(k): (v if isinstance(v, dict) else {"Energy": int(v)})
+                    for k, v in levels.items()
+                })
         return {"changed": changed, "backupPath": str(backup)}
 
     # --- review ------------------------------------------------------------
