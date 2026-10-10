@@ -271,6 +271,38 @@ export default function App() {
       setStaleIds(new Set());
     });
 
+  const rematchPlaylist = (playlistId: string) =>
+    run("Re-matching playlist", async () => {
+      // Pick up files added to rekordbox since the last read, then re-plan
+      // just this playlist so nothing else is recomputed.
+      await rpc.call("library.load");
+      const plan = await rpc.call<SyncPlan>("sync.plan", {
+        playlistIds: [playlistId],
+        force: true,
+      });
+      const refreshed = plan.playlists[0];
+      if (!refreshed) return;
+      const map = new Map(plans);
+      map.set(playlistId, refreshed);
+      setPlans(map);
+      const all = [...map.values()].map((entry) => entry.coverage);
+      const sum = (key: "matched" | "review" | "missing" | "total") =>
+        all.reduce((acc, c) => acc + c[key], 0);
+      const total = sum("total");
+      setCoverage({
+        matched: sum("matched"),
+        review: sum("review"),
+        missing: sum("missing"),
+        total,
+        percent: total ? Math.round((1000 * sum("matched")) / total) / 10 : 0,
+      });
+      setStaleIds((current) => {
+        const next = new Set(current);
+        next.delete(playlistId);
+        return next;
+      });
+    });
+
   const exportWantlist = () =>
     run("Exporting", async () => {
       const result = await rpc.call<{ path: string; paths: string[] }>("wantlist.export");
@@ -501,6 +533,7 @@ export default function App() {
           loading={busy !== null}
           onRefresh={() => void loadPlaylists()}
           staleIds={staleIds}
+          onRematch={(id) => void rematchPlaylist(id)}
         />
         <TrackTable
           plan={activePlan}

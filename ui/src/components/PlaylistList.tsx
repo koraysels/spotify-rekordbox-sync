@@ -17,6 +17,8 @@ interface Props {
   onRefresh: () => void;
   /** Playlists whose stored plan no longer reflects current state. */
   staleIds: Set<string>;
+  /** Re-read rekordbox and match this one playlist again. */
+  onRematch: (id: string) => void;
 }
 
 export function PlaylistList({
@@ -33,6 +35,7 @@ export function PlaylistList({
   loading,
   onRefresh,
   staleIds,
+  onRematch,
 }: Props) {
   const visible = playlists.filter((p) =>
     p.name.toLowerCase().includes(filter.toLowerCase()),
@@ -83,6 +86,19 @@ export function PlaylistList({
               <span className="playlist-name" title={playlist.name}>
                 {playlist.name}
               </span>
+              {playlist.id === active && (
+                <button
+                  className="link rematch"
+                  disabled={loading}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRematch(playlist.id);
+                  }}
+                  data-tip="Re-read rekordbox and look for matches again, for this playlist only"
+                >
+                  ↻
+                </button>
+              )}
               {plan?.error ? (
                 <span className="coverage poor" title={plan.error}>
                   n/a

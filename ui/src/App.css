@@ -1538,3 +1538,11 @@ body.resizing-column {
 .picker-status .chip {
   margin-left: 6px;
 }
+
+.playlist .link.rematch {
+  padding: 0 4px;
+}
+.playlist .link.rematch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import { isTauri, rpc } from "../rpc";
-import type { TrackPlan } from "../types";
+import type { Candidate, TrackPlan } from "../types";
+import { ContextMenu } from "./ContextMenu";
 import type { FileStatus } from "./TrackTable";
 
 interface Props {
@@ -24,6 +25,7 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
   // Whether each candidate's file is actually there. Choosing a copy on an
   // unplugged drive, or one that was deleted, puts a track in a playlist that
   // will not play, so this has to be visible before choosing.
+  const [menu, setMenu] = useState<{ x: number; y: number; candidate: Candidate } | null>(null);
   const [files, setFiles] = useState<Record<string, FileStatus> | null>(null);
 
   useEffect(() => {
@@ -46,6 +48,22 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal picker" onClick={(event) => event.stopPropagation()}>
+        {menu && (
+          <ContextMenu
+            x={menu.x}
+            y={menu.y}
+            onClose={() => setMenu(null)}
+            items={[
+              { label: "Use this file", onSelect: () => onChoose(menu.candidate.contentId) },
+              { separator: true },
+              {
+                label: "Show file in Finder",
+                disabled: !menu.candidate.folderPath || !isTauri(),
+                onSelect: () => void revealItemInDir(menu.candidate.folderPath).catch(() => {}),
+              },
+            ]}
+          />
+        )}
         <h2>Choose match</h2>
         <p className="hint">
           <strong>{row.track.display}</strong>
@@ -85,6 +103,10 @@ export function CandidatePicker({ row, onChoose, onReject, onClose }: Props) {
                     key={candidate.contentId}
                     className={candidate.contentId === row.contentId ? "row selected" : "row"}
                     onDoubleClick={() => onChoose(candidate.contentId)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenu({ x: event.clientX, y: event.clientY, candidate });
+                    }}
                     title="Double-click to use this file"
                   >
                     <td title={candidate.display}>{candidate.display}</td>
