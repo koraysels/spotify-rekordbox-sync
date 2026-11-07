@@ -133,8 +133,9 @@
 }
 
 .playlist {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* Flex, not a 3-column grid: the active row carries an extra re-match
+     button, and a fourth grid child wrapped the count onto its own line. */
+  display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -152,6 +153,8 @@
 }
 
 .playlist-name {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

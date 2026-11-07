@@ -557,6 +557,9 @@ export default function App() {
         onOpenSync={() => void openSyncWindow()}
         selectedCount={selected.size}
         coverage={coverage}
+        activeName={playlists.find((p) => p.id === activePlaylist)?.name ?? null}
+        activeCoverage={activePlan && !activePlan.error ? activePlan.coverage : null}
+        matchedCount={plans.size}
         hasPlan={plans.size > 0}
         busy={busy !== null}
         onPlan={planSync}

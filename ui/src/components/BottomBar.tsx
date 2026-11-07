@@ -3,7 +3,12 @@ import type { Coverage } from "../types";
 interface Props {
   onOpenSync: () => void;
   selectedCount: number;
+  /** Totals across every matched playlist. */
   coverage: Coverage | null;
+  /** The playlist on screen, and its own numbers once it has been matched. */
+  activeName: string | null;
+  activeCoverage: Coverage | null;
+  matchedCount: number;
   hasPlan: boolean;
   busy: boolean;
   onPlan: () => void;
@@ -22,6 +27,9 @@ export function BottomBar({
   onOpenSync,
   selectedCount,
   coverage,
+  activeName,
+  activeCoverage,
+  matchedCount,
   hasPlan,
   busy,
   onPlan,
@@ -37,13 +45,23 @@ export function BottomBar({
         Import into rekordbox…
       </button>
       <div className="summary">
-        {coverage ? (
+        {/* Name the scope: unlabeled totals read as the playlist on screen. */}
+        {activeName && activeCoverage ? (
           <>
-            <strong>{coverage.percent}%</strong> matched · {coverage.matched} found ·{" "}
-            {coverage.review} to review · {coverage.missing} missing
+            {activeName}: <strong>{activeCoverage.percent}%</strong> matched ·{" "}
+            {activeCoverage.matched} found · {activeCoverage.review} to review ·{" "}
+            {activeCoverage.missing} missing
           </>
-        ) : (
+        ) : activeName ? (
+          <span className="muted">{activeName}: not matched yet. Tick it and press Find matches.</span>
+        ) : !coverage ? (
           <span className="muted">No matches yet. Select playlists and press Find matches.</span>
+        ) : null}
+        {coverage && matchedCount > 1 && (
+          <span className="muted">
+            {" "}
+            · all {matchedCount} playlists: {coverage.percent}%
+          </span>
         )}
       </div>
       <div className="actions">
