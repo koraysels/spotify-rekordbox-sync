@@ -115,17 +115,22 @@ class DatabaseNotFound(RekordboxError):
 def is_rekordbox_running() -> bool:
     """True if a rekordbox process is currently running.
 
-    Matched on the process name rather than a bundle id so it works across
-    macOS and Windows and across rekordbox 6 and 7.
+    Matched on the exact process name rather than a bundle id so it works
+    across macOS and Windows and across rekordbox 6 and 7. Exact, not a
+    substring: third-party tools such as "Rekordbox Library Fixer" carry the
+    word in their name and do not lock the database.
     """
     for process in psutil.process_iter(["name"]):
         try:
             name = (process.info.get("name") or "").lower()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-        if "rekordbox" in name:
+        if name in _REKORDBOX_PROCESS_NAMES:
             return True
     return False
+
+
+_REKORDBOX_PROCESS_NAMES = frozenset({"rekordbox", "rekordbox.exe"})
 
 
 def default_database_path() -> Path:

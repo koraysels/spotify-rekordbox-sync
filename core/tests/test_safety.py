@@ -82,3 +82,20 @@ class TestWriteGate:
         monkeypatch.setattr("rbsync.rekordbox.is_rekordbox_running", lambda: False)
         backup = ensure_safe_to_write(source, tmp_path / "backups")
         assert backup.exists()
+
+
+def test_running_check_ignores_tools_named_after_rekordbox(monkeypatch):
+    """Only rekordbox itself locks the database, not "Rekordbox Library Fixer"."""
+    import types
+
+    from rbsync import rekordbox
+
+    def processes(names):
+        return lambda attrs: [types.SimpleNamespace(info={"name": n}) for n in names]
+
+    monkeypatch.setattr(rekordbox.psutil, "process_iter", processes(["Rekordbox Library Fixer"]))
+    assert rekordbox.is_rekordbox_running() is False
+    monkeypatch.setattr(rekordbox.psutil, "process_iter", processes(["rekordbox"]))
+    assert rekordbox.is_rekordbox_running() is True
+    monkeypatch.setattr(rekordbox.psutil, "process_iter", processes(["rekordbox.exe"]))
+    assert rekordbox.is_rekordbox_running() is True
