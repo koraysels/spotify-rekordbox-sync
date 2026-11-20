@@ -185,7 +185,7 @@ export function SettingsPanel({
             Download missing tracks (spotDL)
           </label>
           <p className="hint">
-            Downloads come from YouTube Music: Opus around 160 kbps, converted to an mp3
+            Downloads come from YouTube Music: Opus at about 130–160 kbps, converted to an mp3
             bitrate that matches it and labelled lowq. Fine for practice and emergencies;
             buy the track for club use.
           </p>

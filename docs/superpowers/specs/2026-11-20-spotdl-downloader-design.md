@@ -244,8 +244,9 @@ run inside a handler.
 loses queued jobs; the user presses the button again, and already downloaded
 tracks are skipped. On shutdown (stdin closes) the worker kills the running
 spotDL child so no orphan keeps downloading. spotDL writes into a per-job
-temp directory inside `<downloadFolder>/.rbsync-tmp/`; only a finished file is
-moved into the playlist folder. A cancelled or killed run leaves at most a temp
+temp directory inside `<downloadFolder>/rbsync-tmp/` (no leading dot: spotDL
+strips leading dots from path components, so it would write somewhere else);
+only a finished file is moved into the playlist folder. A cancelled or killed run leaves at most a temp
 directory, which is wiped on the next worker start. This also keeps
 `--overwrite skip` from skipping over a half-written file.
 
@@ -268,7 +269,13 @@ and alongside plan/apply.
    in Constraints, and encode once with ffmpeg (`libmp3lame`, CBR, ID3v2.3),
    copying all tags and the cover, and setting the comment to `lowq` (my call:
    comment, because rekordbox imports it into its Comments column, where it is
-   searchable and sortable). The source file is deleted afterwards.
+   searchable and sortable). ffmpeg puts tags it has no ID3 name for into TXXX
+   frames, which rekordbox ignores, so the tag is then rewritten: comment to
+   COMM, Spotify URL to WOAS, label to TPUB, track/disc totals into TRCK/TPOS,
+   lyrics to USLT, ISRC to TSRC (Spotify's ISRC first, else the source's), and
+   the cover marked as front cover. BPM (TBPM) and key (TKEY, e.g. `Am`) are
+   added from audio features already cached for the track; nothing is fetched
+   for them. The source file is deleted afterwards.
 5. Verify exactly one audio file appeared, move it into the target folder
    (if a file with that name already exists there, keep it and record that
    path), record the result. This is the "after download" step where the

@@ -218,7 +218,7 @@ straight from the track table.
 - Downloads never touch rekordbox's `master.db`. To use a download, import it into
   rekordbox yourself, then sync again.
 
-**Quality.** The source is a lossy stream, roughly Opus at ~160 kbps. rbsync
+**Quality.** The source is a lossy stream, roughly Opus at about 130–160 kbps. rbsync
 converts it to an mp3 whose bitrate is the next constant-bitrate step at or above
 1.25 times the source, capped at 256. Opus 160 becomes 224, Opus 130 becomes 192,
 AAC 128 becomes 160. It never uses 320: that would add bits that carry nothing.
