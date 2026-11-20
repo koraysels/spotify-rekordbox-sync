@@ -13,6 +13,13 @@ const POLL_MS = 1500;
 const INSTALL_JOB = "install";
 const INSTALL_GIVE_UP_MS = 3 * 60 * 1000;
 
+/** Why downloading cannot start yet, or "" when spotDL and ffmpeg are both there. */
+export function downloadBlocker(status: DownloaderStatus | null): string {
+  if (!status?.spotdl.path) return "Install spotDL in Settings first";
+  if (!status.ffmpeg) return "ffmpeg not found: use Install in Settings, or install ffmpeg yourself";
+  return "";
+}
+
 /** Latest spotDL install progress; `message` carries the failure reason. */
 export interface InstallState {
   state: "idle" | "downloading" | "done" | "failed";

@@ -36,8 +36,10 @@ export type BandFilter = "all" | Band;
 /** Downloader state for the table. Absent, or `enabled: false`, leaves the table as it was. */
 export interface DownloadProps {
   enabled: boolean;
-  /** Whether spotDL is installed; downloading is disabled until it is. */
-  spotdlReady: boolean;
+  /** Why downloading is disabled (a tool is missing), or "" when it can start. */
+  unavailable: string;
+  /** The reason the queue is paused, or null while it runs. */
+  pausedReason: string | null;
   jobs: Map<string, DownloadJob>;
   records: Map<string, DownloadRecord>;
   onDownload: (rows: TrackPlan[]) => void;
@@ -49,7 +51,6 @@ const ACTIVE_LABEL: Record<string, string> = {
   downloading: "downloading…",
   converting: "converting…",
 };
-const INSTALL_TIP = "Install spotDL in Settings first";
 
 /** Where a track stands with the downloader. */
 function downloadStateOf(
@@ -397,7 +398,7 @@ export function TrackTable({
         items.push({
           label: "Download",
           hint: wanted.length > 1 ? `${wanted.length} tracks` : undefined,
-          disabled: !dl.spotdlReady,
+          disabled: Boolean(dl.unavailable),
           onSelect: () => dl.onDownload(wanted),
         });
       }
@@ -441,8 +442,8 @@ export function TrackTable({
           {dl && missingToDownload.length > 0 && (
             <button
               className="accept"
-              disabled={!dl.spotdlReady}
-              title={dl.spotdlReady ? "Download the missing tracks with spotDL" : INSTALL_TIP}
+              disabled={Boolean(dl.unavailable)}
+              title={dl.unavailable || "Download the missing tracks with spotDL"}
               onClick={() => dl.onDownload(missingToDownload)}
             >
               Download {missingToDownload.length} missing
@@ -522,7 +523,9 @@ export function TrackTable({
                   <td className="col-band">
                     <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
                     {/* Once matched, the track is in rekordbox: download state no longer matters. */}
-                    {dl && row.band === "reject" && <DownloadBadge state={downloadStateOf(row.track.id, dl)} />}
+                    {dl && row.band === "reject" && (
+                      <DownloadBadge state={downloadStateOf(row.track.id, dl)} pausedReason={dl.pausedReason} />
+                    )}
                     {isLowq(row) && (
                       <span className="band lowq" title="Fetched by rbsync from a lossy source; replace it when you can.">
                         lowq
@@ -654,10 +657,21 @@ function FileAwareBand({ row, file }: { row: TrackPlan; file?: FileStatus }) {
   return <span className={`band ${row.band}`}>{BAND_LABEL[row.band]}</span>;
 }
 
-function DownloadBadge({ state }: { state: ReturnType<typeof downloadStateOf> }) {
+function DownloadBadge({
+  state,
+  pausedReason,
+}: {
+  state: ReturnType<typeof downloadStateOf>;
+  pausedReason: string | null;
+}) {
   if (!state) return null;
   if (state.kind === "active") {
-    return <span className="band dl-active">{ACTIVE_LABEL[state.state]}</span>;
+    const paused = state.state === "queued" && pausedReason !== null;
+    return (
+      <span className="band dl-active" title={paused ? `paused${pausedReason ? `: ${pausedReason}` : ""}` : undefined}>
+        {ACTIVE_LABEL[state.state]}
+      </span>
+    );
   }
   if (state.kind === "downloaded") {
     return (

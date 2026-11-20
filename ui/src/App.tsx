@@ -4,7 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import "./App.css";
 import { isTauri, rpc } from "./rpc";
-import { useDownloads } from "./downloads";
+import { downloadBlocker, useDownloads } from "./downloads";
 import { openSyncWindow } from "./syncWindow";
 import { serveRpcToOtherWindows } from "./bridge";
 import { revealPath } from "./reveal";
@@ -529,6 +529,13 @@ export default function App() {
           onDismiss={() => setWantlist(null)}
         />
       )}
+      {downloadsOn && downloader.status?.paused && (
+        <Banner
+          tone="warn"
+          message={`Downloads are paused${downloader.status.reason ? `: ${downloader.status.reason}` : "."}`}
+          action={{ label: "Resume", onClick: () => void downloader.resume() }}
+        />
+      )}
       {error && <Banner tone="error" message={error} onDismiss={() => setError(null)} />}
       {notice && <Banner tone="info" message={notice} onDismiss={() => setNotice(null)} />}
 
@@ -576,7 +583,8 @@ export default function App() {
           onUndoDecision={(row) => void undoDecision(row)}
           downloads={{
             enabled: downloadsOn,
-            spotdlReady: Boolean(downloader.status?.spotdl.path),
+            unavailable: downloadBlocker(downloader.status),
+            pausedReason: downloader.status?.paused ? downloader.status.reason : null,
             jobs: downloader.jobs,
             records: downloader.records,
             onDownload: (rows) => void downloadRows(rows),
