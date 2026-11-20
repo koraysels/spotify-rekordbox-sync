@@ -192,7 +192,9 @@ def test_one_track_end_to_end(env):
     states = [p["state"] for m, p in env.events if m == "download.progress" and p["jobId"] == job["jobId"]]
     assert states == ["queued", "downloading", "converting", "done"]
     assert [p for m, p in env.events if m == "download.progress"][-1]["path"] == str(target)
-    assert not (env.folder / ".rbsync-tmp" / job["jobId"]).exists()
+    assert not (env.folder / "rbsync-tmp").exists()
+    done = [p for m, p in env.events if m == "download.progress"][-1]
+    assert done["message"] == "mp3 224 kbps from opus 160 kbps"
 
 
 def test_enqueue_skips_queued_and_done(env, tmp_path):
@@ -287,7 +289,7 @@ def test_m4a_fallback_when_opus_exits_zero_without_a_file(env):
     assert job_states(d) == {"sp1": "done"}
 
 
-def test_exit_zero_without_any_file_fails_with_last_line(env):
+def test_exit_zero_without_any_file_fails_with_explanation_and_last_line(env):
     def run(args, cancel):
         return 0, "LookupError: No results found for song\n"
 
@@ -295,7 +297,7 @@ def test_exit_zero_without_any_file_fails_with_last_line(env):
     d.enqueue([track()])
     wait_all_terminal(d)
     [job] = d.status()["jobs"]
-    assert job["state"] == "failed" and job["message"] == "LookupError: No results found for song"
+    assert job["state"] == "failed" and job["message"] == "spotDL produced no audio file: LookupError: No results found for song"
 
 
 def test_failure_continues_queue(env):
@@ -311,10 +313,10 @@ def test_failure_continues_queue(env):
     wait_all_terminal(d)
     jobs = {j["spotifyId"]: j for j in d.status()["jobs"]}
     assert jobs["sp1"]["state"] == "failed"
-    assert jobs["sp1"]["message"] == "LookupError: No results found"
+    assert jobs["sp1"]["message"] == "spotDL produced no audio file: LookupError: No results found"
     assert jobs["sp2"]["state"] == "done"
     rec = env.cache.get_downloads(["sp1"])["sp1"]
-    assert rec.status == "failed" and rec.error == "LookupError: No results found"
+    assert rec.status == "failed" and rec.error == "spotDL produced no audio file: LookupError: No results found"
 
 
 def test_rate_limit_pauses_and_requeues(env):
@@ -452,7 +454,7 @@ def test_cancel_leaves_no_partial_file(env):
     wait_all_terminal(d)
     assert job_states(d) == {"sp1": "cancelled"}
     assert list((env.folder / "Warmup").iterdir()) == []
-    assert not (env.folder / ".rbsync-tmp" / job["jobId"]).exists()
+    assert not (env.folder / "rbsync-tmp").exists()
     assert "sp1" not in env.cache.get_downloads(["sp1"])
 
 
@@ -466,14 +468,16 @@ def test_cancel_all_drops_queued_jobs(env):
     assert job_states(d) == {"sp1": "cancelled", "sp2": "cancelled"}
 
 
-def test_temp_dir_wiped_on_start(env):
-    stale = env.folder / ".rbsync-tmp" / "old" / "x.part"
-    stale.parent.mkdir(parents=True)
-    stale.write_bytes(b"x")
+def test_temp_dir_wiped_on_start_under_both_names(env):
+    stale = [env.folder / name / "old" / "x.part" for name in (".rbsync-tmp", "rbsync-tmp")]
+    for f in stale:
+        f.parent.mkdir(parents=True)
+        f.write_bytes(b"x")
     d = env(writes_file())
     d.enqueue([track()])
     wait_all_terminal(d)
-    assert not stale.parent.exists()
+    assert not any(f.parent.exists() for f in stale)
+    assert not (env.folder / ".rbsync-tmp").exists() and not (env.folder / "rbsync-tmp").exists()
 
 
 def test_secret_never_in_notifications(env, tmp_path):

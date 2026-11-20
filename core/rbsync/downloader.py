@@ -2,7 +2,7 @@
 
 The RPC loop handles one call at a time, so jobs run on a single worker thread
 and report through ``download.progress`` / ``download.queue`` notifications.
-spotDL writes into a per-job temp dir under ``<folder>/.rbsync-tmp``; only a
+spotDL writes into a per-job temp dir under ``<folder>/rbsync-tmp``; only a
 finished, re-encoded mp3 is moved into the playlist folder. Never touches
 rekordbox's master.db.
 """
@@ -27,7 +27,9 @@ from .cache import Cache
 from .tools import ToolMissing
 from .transcode import encode_mp3_lowq, measure_audio_kbps, mp3_bitrate_for
 
-TMP_DIR = ".rbsync-tmp"
+# No leading dot: spotDL strips it from path components and would write elsewhere.
+TMP_DIR = "rbsync-tmp"
+_OLD_TMP_DIR = ".rbsync-tmp"
 INSTALL_JOB = "install"
 RATE_LIMITED = "Rate-limited by Spotify/YouTube"
 MAX_FINISHED = 200  # finished jobs kept for status(); active ones are always kept
@@ -144,6 +146,7 @@ class _Job:
     state: str = "queued"
     message: str = ""
     path: str = ""
+    note: str = ""
     cancel: threading.Event = field(default_factory=threading.Event)
 
     def as_dict(self) -> dict:
@@ -334,6 +337,10 @@ class Downloader:
         finally:
             for tmp in tmps:
                 shutil.rmtree(tmp, ignore_errors=True)
+                try:
+                    tmp.parent.rmdir()  # only succeeds once empty
+                except OSError:
+                    pass
         if isinstance(outcome, _Pause):
             self._pause(job, outcome)
             return
@@ -360,7 +367,8 @@ class Downloader:
             self._set(job, "downloading")
             source = self._download(cfg, job, tmp)
             self._set(job, "converting")
-            kbps = mp3_bitrate_for(self._measure(cfg.ffmpeg, source))
+            measured = self._measure(cfg.ffmpeg, source)
+            kbps = mp3_bitrate_for(measured)
             encoded = tmp / f"{source.stem}.rbsync.mp3"
             self._encode(cfg.ffmpeg, source, encoded, kbps, cancel=job.cancel)
             if job.cancel.is_set():
@@ -368,6 +376,7 @@ class Downloader:
             final = target_dir / f"{source.stem}.mp3"
             if not final.exists():
                 shutil.move(str(encoded), str(final))
+            job.note = f"mp3 {kbps} kbps from {source.suffix.lstrip('.').lower()} {round(measured)} kbps"
             return "done", str(final)
         except _Pause as e:
             return e
@@ -382,7 +391,8 @@ class Downloader:
         root = Path(cfg.folder)
         if not self._wiped:
             self._wiped = True
-            shutil.rmtree(root / TMP_DIR, ignore_errors=True)
+            for name in (TMP_DIR, _OLD_TMP_DIR):
+                shutil.rmtree(root / name, ignore_errors=True)
         target_dir = root / safe_folder_name(job.track.playlist_name)
         tmp = root / TMP_DIR / job.id
         try:
@@ -403,7 +413,9 @@ class Downloader:
         if not files:
             if is_rate_limited(out):
                 raise _Pause(RATE_LIMITED)
-            raise _Failed(_last_line(out) or (f"spotDL exited {rc}" if rc else "spotDL produced no audio file"))
+            last = _last_line(out)
+            raise _Failed(f"spotDL produced no audio file: {last}" if last else
+                          f"spotDL exited {rc}" if rc else "spotDL produced no audio file")
         if rc != 0:
             raise _Failed(_last_line(out) or f"spotDL exited {rc}")
         if len(files) > 1:
@@ -426,7 +438,7 @@ class Downloader:
             if self._current is job:
                 self._current = None
             job.state = state
-            job.message = detail if state == "failed" else ""
+            job.message = detail if state == "failed" else job.note if state == "done" else ""
             job.path = detail if state == "done" else ""
             self._progress(job)
             self._prune_locked()
