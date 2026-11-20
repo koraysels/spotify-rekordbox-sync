@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 import traceback
 from typing import Any, Callable
 
@@ -31,14 +32,30 @@ class RpcServer:
         self.service = service
         self._out = out or sys.stdout
         self._methods: dict[str, Callable[..., Any]] = {}
+        self._emit_lock = threading.Lock()
+        self._closers: list[Callable[[], None]] = []
         self.register("ping", lambda **_: {"pong": True})
 
     def register(self, name: str, handler: Callable[..., Any]) -> None:
         self._methods[name] = handler
 
     def emit(self, raw: str) -> None:
-        self._out.write(raw + "\n")
-        self._out.flush()
+        # Worker threads notify while the main loop replies; keep lines whole.
+        with self._emit_lock:
+            self._out.write(raw + "\n")
+            self._out.flush()
+
+    def add_closer(self, fn: Callable[[], None]) -> None:
+        """Register a hook to run once when the server shuts down."""
+        self._closers.append(fn)
+
+    def close(self) -> None:
+        closers, self._closers = self._closers, []
+        for fn in closers:
+            try:
+                fn()
+            except Exception:  # noqa: BLE001 - one bad hook must not block the rest
+                log.exception("rpc closer failed")
 
     def notify(self, method: str, params: dict | None = None) -> None:
         """Send a server-initiated message. Notifications carry no id."""
@@ -97,7 +114,10 @@ class RpcServer:
 
     def serve_forever(self, stream=None) -> None:
         stream = stream or sys.stdin
-        for line in stream:
-            response = self.handle_line(line)
-            if response:
-                self.emit(response)
+        try:
+            for line in stream:
+                response = self.handle_line(line)
+                if response:
+                    self.emit(response)
+        finally:
+            self.close()
