@@ -204,6 +204,36 @@ playlist's wantlist, select only that playlist.
 Exported as CSV and as plain `Artist - Title` lines for pasting into a search
 tool, with buttons to copy the list or reveal the file.
 
+## Downloading missing tracks
+
+Off by default. Turn it on in **Settings → Downloads** and rbsync can fetch the
+tracks you are missing with [spotDL](https://github.com/spotDL/spotify-downloader),
+straight from the track table.
+
+- spotDL is installed by the app on first use (a pinned version, hash-checked).
+  Intel Macs have no prebuilt spotDL, so install it yourself with
+  `pipx install spotdl` or `brew install spotdl` and rbsync will find it.
+- Files land in `~/Downloads/rbsync/<playlist>/`, one folder per playlist. You can
+  change the folder in Settings. A track that is already there is skipped.
+- Downloads never touch rekordbox's `master.db`. To use a download, import it into
+  rekordbox yourself, then sync again.
+
+**Quality.** The source is a lossy stream, roughly Opus at ~160 kbps. rbsync
+converts it to an mp3 whose bitrate is the next constant-bitrate step at or above
+1.25 times the source, capped at 256. Opus 160 becomes 224, Opus 130 becomes 192,
+AAC 128 becomes 160. It never uses 320: that would add bits that carry nothing.
+Every file gets `lowq` in its comment tag, so you can find them in rekordbox and
+replace them with a real copy when you buy one.
+
+**Rate limits.** If Spotify starts refusing spotDL's requests, add your own
+Spotify client ID and secret in Settings → Downloads. This is the one place a
+client secret is used; it is kept out of logs and is never shown again. If the
+queue hits a limit it pauses and says why.
+
+**Find links.** Missing and `lowq` tracks also have search links for Beatport,
+Bandcamp, Traxsource, Juno and Discogs. For Soulseek, use the existing
+**Copy "Artist - Title"** item and paste it into your client.
+
 ## Energy, danceability and mood
 
 Spotify no longer gives new apps audio features (its endpoint answers 403), so
@@ -379,8 +409,7 @@ browsing, matching with review and bulk actions, playlist writes, coverage
 reporting, wantlist export, file-availability checks, sync history, backups with
 restore, playlist-tree repair, and in-app updates on macOS and Windows.
 
-Not built yet: importing new audio files into the rekordbox collection, and
-assisted downloading of wantlist tracks.
+Not built yet: importing new audio files into the rekordbox collection.
 
 Untested: the Windows build has been produced and installed by CI but never run
 by a person — treat it as unproven until someone opens it.
