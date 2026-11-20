@@ -59,9 +59,11 @@ def writes_file(name="Artist - Title"):
 class Encoder:
     def __init__(self):
         self.kbps = []
+        self.tags = []
 
-    def __call__(self, ffmpeg, source, target, kbps, cancel=None):
+    def __call__(self, ffmpeg, source, target, kbps, cancel=None, *, isrc="", fill=None):
         self.kbps.append(kbps)
+        self.tags.append((isrc, fill))
         shutil.copyfile(source, target)
 
 
@@ -549,3 +551,21 @@ def test_appledouble_files_are_not_audio(env):
     wait_all_terminal(d)
     assert job_states(d) == {"sp1": "done"}
     assert (env.folder / "Warmup" / "Artist - Title.mp3").read_bytes() == b"audio"
+
+
+def test_encode_gets_the_spotify_isrc_and_cached_bpm_and_key(env):
+    env.cache.save_features({"sp1": {"energy": 0.8, "tempo": 123.6, "key": 9, "mode": 0}})
+    encoder = Encoder()
+    d = env(writes_file(), encode=encoder)
+    t = track()
+    d.enqueue([TrackRequest(**{**t.__dict__, "isrc": "USRC17607839"})])
+    wait_all_terminal(d)
+    assert encoder.tags == [("USRC17607839", {"TBPM": "124", "TKEY": "Am"})]
+
+
+def test_encode_without_cached_features_fills_nothing(env):
+    encoder = Encoder()
+    d = env(writes_file(), encode=encoder)
+    d.enqueue([track()])
+    wait_all_terminal(d)
+    assert encoder.tags == [("", {})]

@@ -32,6 +32,16 @@ def camelot_from_pitch(pitch: int | None, mode: int | None) -> str:
     return (_MAJOR if int(mode) == 1 else _MINOR)[int(pitch)]
 
 
+_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+
+def key_name(pitch: int | None, mode: int | None) -> str:
+    """Standard notation ("Am", "F#") for Spotify's key and mode, as ID3 TKEY wants."""
+    if pitch is None or mode is None or not 0 <= int(pitch) <= 11:
+        return ""
+    return _NAMES[int(pitch)] + ("" if int(mode) == 1 else "m")
+
+
 def to_camelot(key: str) -> str:
     """Convert a key name to Camelot, or return it unchanged when unrecognised.
 

@@ -24,6 +24,7 @@ from typing import Callable
 import psutil
 
 from .cache import Cache
+from .keys import key_name
 from .tools import ToolMissing, last_line
 from .transcode import encode_mp3_lowq, measure_audio_kbps, mp3_bitrate_for
 
@@ -365,7 +366,10 @@ class Downloader:
             measured = self._measure(cfg.ffmpeg, source)
             kbps = mp3_bitrate_for(measured)
             encoded = tmp / f"{source.stem}.rbsync.mp3"
-            self._encode(cfg.ffmpeg, source, encoded, kbps, cancel=job.cancel)
+            self._encode(
+                cfg.ffmpeg, source, encoded, kbps, cancel=job.cancel,
+                isrc=job.track.isrc, fill=self._cached_tags(job.track.spotify_id),
+            )
             if job.cancel.is_set():
                 raise _Cancelled
             final = target_dir / f"{source.stem}.mp3"
@@ -381,6 +385,17 @@ class Downloader:
             if job.cancel.is_set():  # e.g. TranscodeError("cancelled")
                 return "cancelled", ""
             return "failed", str(e) or type(e).__name__
+
+    def _cached_tags(self, spotify_id: str) -> dict[str, str]:
+        """TBPM / TKEY from audio features already in the cache; never fetched here."""
+        data = self._cache.get_features([spotify_id]).get(spotify_id) or {}
+        tags = {}
+        if data.get("tempo"):
+            tags["TBPM"] = str(round(data["tempo"]))
+        key = key_name(data.get("key"), data.get("mode"))
+        if key:
+            tags["TKEY"] = key
+        return tags
 
     def _prepare(self, cfg: DownloadConfig, job: _Job) -> tuple[Path, Path]:
         root = Path(cfg.folder)

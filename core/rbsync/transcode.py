@@ -12,6 +12,8 @@ import sys
 import threading
 from pathlib import Path
 
+from .id3 import fix_tag
+
 MP3_STEPS: tuple[int, ...] = (128, 160, 192, 224, 256)
 LOWQ_COMMENT = "lowq"
 
@@ -63,7 +65,15 @@ def encode_mp3_lowq(
     target: Path,
     kbps: int,
     cancel: threading.Event | None = None,
+    *,
+    isrc: str = "",
+    fill: dict[str, str] | None = None,
 ) -> None:
+    """Encode ``source`` to a CBR mp3 with all its tags, the cover and comment ``lowq``.
+
+    ``isrc`` (Spotify's) wins over one in the source; ``fill`` gives ID3 text
+    frames, e.g. TBPM and TKEY, used only where the source has none.
+    """
     cmd = [
         ffmpeg, "-y", "-hide_banner", "-i", str(source),
         "-map", "0:a:0", "-map", "0:v?", "-map_metadata", "0",
@@ -89,6 +99,7 @@ def encode_mp3_lowq(
         target.unlink(missing_ok=True)
         lines = [ln for ln in "".join(err_chunks).splitlines() if ln.strip()]
         raise TranscodeError(lines[-1] if lines else f"ffmpeg exited {proc.returncode}")
+    fix_tag(target, override={"TSRC": isrc}, fill=fill)
 
 
 def _wait(proc, cancel, target, reader) -> None:
