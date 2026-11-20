@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +32,16 @@ class Decision:
     track_display: str = ""
     content_display: str = ""
     playlist_name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadRecord:
+    spotify_id: str
+    status: str  # "done" | "failed"
+    path: str
+    playlist_name: str
+    error: str
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,6 +180,15 @@ class Cache:
                 fingerprint TEXT NOT NULL,
                 spotify_id  TEXT NOT NULL,
                 resolved_at TEXT NOT NULL
+            );
+            -- Outcome of downloading a track that was missing from the library.
+            CREATE TABLE IF NOT EXISTS downloads (
+                spotify_id    TEXT PRIMARY KEY,
+                status        TEXT NOT NULL,
+                path          TEXT NOT NULL DEFAULT '',
+                playlist_name TEXT NOT NULL DEFAULT '',
+                error         TEXT NOT NULL DEFAULT '',
+                created_at    TEXT NOT NULL
             );
             """
         )
@@ -483,6 +502,54 @@ class Cache:
                 row["content_id"]: (row["fingerprint"], row["spotify_id"])
                 for row in self._db.execute("SELECT content_id, fingerprint, spotify_id FROM resolutions")
             }
+
+    # --- downloads ---------------------------------------------------------
+
+    def record_download(
+        self,
+        spotify_id: str,
+        *,
+        status: str,
+        path: str = "",
+        playlist_name: str = "",
+        error: str = "",
+    ) -> None:
+        with self._lock:
+            self._db.execute(
+                """
+                INSERT INTO downloads (spotify_id, status, path, playlist_name, error, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(spotify_id) DO UPDATE SET
+                    status        = excluded.status,
+                    path          = excluded.path,
+                    playlist_name = excluded.playlist_name,
+                    error         = excluded.error,
+                    created_at    = excluded.created_at
+                """,
+                (spotify_id, status, path, playlist_name, error, _now()),
+            )
+            self._db.commit()
+
+    def get_downloads(self, spotify_ids: list[str]) -> dict[str, DownloadRecord]:
+        """Recorded download outcomes for ``spotify_ids``; unknown ids are absent."""
+        result: dict[str, DownloadRecord] = {}
+        wanted = [k for k in dict.fromkeys(spotify_ids) if k]
+        with self._lock:
+            for start in range(0, len(wanted), 500):
+                chunk = wanted[start : start + 500]
+                marks = ",".join("?" * len(chunk))
+                for row in self._db.execute(
+                    f"SELECT * FROM downloads WHERE spotify_id IN ({marks})", chunk
+                ):
+                    result[row["spotify_id"]] = DownloadRecord(
+                        spotify_id=row["spotify_id"],
+                        status=row["status"],
+                        path=row["path"],
+                        playlist_name=row["playlist_name"],
+                        error=row["error"],
+                        created_at=row["created_at"],
+                    )
+        return result
 
     def close(self) -> None:
         self._db.close()
