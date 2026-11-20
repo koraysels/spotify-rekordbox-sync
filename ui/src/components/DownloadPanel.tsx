@@ -59,7 +59,7 @@ export function DownloadPanel({ jobs, records, status, titles, onCancelAll, onRe
         )}
 
         {[...folders].map(([name, { count, path }]) => {
-          const folder = path.slice(0, path.lastIndexOf("/")) || path;
+          const folder = folderOf(path);
           return (
             <div className="download-row" key={name}>
               <span title={folder}>
@@ -83,4 +83,9 @@ export function DownloadPanel({ jobs, records, status, titles, onCancelAll, onRe
       </div>
     </div>
   );
+}
+
+/** The folder a file sits in; handles both `/` and `\\` separators. */
+function folderOf(path: string): string {
+  return path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))) || path;
 }
