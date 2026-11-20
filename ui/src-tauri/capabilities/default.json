@@ -36,6 +36,7 @@
     "core:window:allow-set-focus",
     "core:event:default",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "dialog:allow-open"
   ]
 }

@@ -25,6 +25,7 @@ export interface Candidate {
   titleScore: number;
   artistScore: number;
   durationScore: number;
+  comment: string;
 }
 
 /** Audio features from ReccoBeats; 0..1 except tempo, key and loudness. */
@@ -105,6 +106,46 @@ export interface Settings {
   allowRemovals: boolean;
   onlySyncable: boolean;
   tagFeaturesOnSync: boolean;
+  downloaderEnabled: boolean;
+  downloadFolder: string;
+  downloaderClientId: string;
+  hasDownloaderSecret: boolean;
+  spotdlPath: string;
+}
+
+export type DownloadState =
+  | "queued"
+  | "downloading"
+  | "converting"
+  | "done"
+  | "failed"
+  | "cancelled"
+  | "skipped";
+
+export interface DownloadJob {
+  jobId: string;
+  spotifyId: string;
+  state: DownloadState;
+  message: string;
+  path: string;
+}
+
+export interface DownloadRecord {
+  status: "done" | "failed";
+  path: string;
+  playlistName: string;
+  error: string;
+  exists: boolean;
+}
+
+export interface DownloaderStatus {
+  enabled: boolean;
+  spotdl: { path: string | null; source: string };
+  ffmpeg: string | null;
+  version: string;
+  paused: boolean;
+  reason: string;
+  jobs: DownloadJob[];
 }
 
 export interface ApplyResult {

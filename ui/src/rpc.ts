@@ -29,12 +29,14 @@ interface Pending {
 }
 
 export type ProgressHandler = (message: string) => void;
+export type NotificationHandler = (params: any) => void;
 
 export class RpcClient {
   private child: Child | null = null;
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private progressHandlers = new Set<ProgressHandler>();
+  private notificationHandlers = new Map<string, Set<NotificationHandler>>();
   private buffer = "";
 
   async start(): Promise<void> {
@@ -57,6 +59,19 @@ export class RpcClient {
   onProgress(handler: ProgressHandler): () => void {
     this.progressHandlers.add(handler);
     return () => this.progressHandlers.delete(handler);
+  }
+
+  /** Subscribe to any server-initiated notification by method name. */
+  onNotification(method: string, handler: NotificationHandler): () => void {
+    let handlers = this.notificationHandlers.get(method);
+    if (!handlers) {
+      handlers = new Set();
+      this.notificationHandlers.set(method, handlers);
+    }
+    handlers.add(handler);
+    return () => {
+      handlers.delete(handler);
+    };
   }
 
   private onStdout(chunk: string): void {
@@ -84,6 +99,11 @@ export class RpcClient {
       if (message.method === "progress") {
         const text = String(message.params?.message ?? "");
         this.progressHandlers.forEach((handler) => handler(text));
+      }
+      if (typeof message.method === "string") {
+        this.notificationHandlers
+          .get(message.method)
+          ?.forEach((handler) => handler(message.params));
       }
       return;
     }
