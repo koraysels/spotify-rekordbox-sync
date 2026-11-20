@@ -9,6 +9,7 @@ rekordbox's master.db.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
@@ -24,16 +25,21 @@ import psutil
 
 from .cache import Cache
 from .tools import ToolMissing
-from .transcode import TranscodeError, encode_mp3_lowq, measure_audio_kbps, mp3_bitrate_for
+from .transcode import encode_mp3_lowq, measure_audio_kbps, mp3_bitrate_for
 
 TMP_DIR = ".rbsync-tmp"
 INSTALL_JOB = "install"
 RATE_LIMITED = "Rate-limited by Spotify/YouTube"
+MAX_FINISHED = 200  # finished jobs kept for status(); active ones are always kept
 
 _UNSAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 _RATE_LIMIT_RE = re.compile(r"rate limit|429|too many requests", re.IGNORECASE)
 _AUDIO_EXTS = {".opus", ".m4a", ".mp3", ".ogg", ".webm", ".flac", ".wav", ".aac"}
+_FINISHED = {"done", "failed", "cancelled"}
+_READER_GRACE = 5.0
+
+log = logging.getLogger(__name__)
 
 Runner = Callable[[list[str], threading.Event], tuple[int, str]]
 
@@ -94,19 +100,19 @@ def run_process(args: list[str], cancel: threading.Event) -> tuple[int, str]:
     chunks: list[str] = []
     reader = threading.Thread(target=lambda: chunks.append(proc.stdout.read()), daemon=True)
     reader.start()
-    try:
-        while True:
-            if cancel.is_set() and proc.poll() is None:
-                _kill_tree(proc)
-                break
-            try:
-                proc.wait(timeout=0.2)
-                break
-            except subprocess.TimeoutExpired:
-                continue
-        reader.join()
-    finally:
-        proc.stdout.close()
+    while True:
+        if cancel.is_set() and proc.poll() is None:
+            _kill_tree(proc)
+            break
+        try:
+            proc.wait(timeout=0.2)
+            break
+        except subprocess.TimeoutExpired:
+            continue
+    # A stray descendant can hold the pipe open; never wait on it forever.
+    reader.join(timeout=_READER_GRACE)
+    if not reader.is_alive():
+        proc.stdout.close()  # closing under a blocked reader would block too
     return proc.returncode, "".join(chunks)
 
 
@@ -147,9 +153,16 @@ class _Job:
             "message": self.message, "path": self.path,
         }
 
+    def summary(self) -> dict:
+        return {"jobId": self.id, "spotifyId": self.track.spotify_id, "state": self.state, "path": self.path}
+
 
 class _Pause(Exception):
     """Stop the queue; the job goes back to the head as ``queued``."""
+
+    def __init__(self, reason: str, *, tool: bool = False) -> None:
+        super().__init__(reason)
+        self.tool = tool  # a missing tool, which a successful install() fixes
 
 
 class _Cancelled(Exception):
@@ -176,12 +189,15 @@ class Downloader:
         self._run = run
         self._measure = measure
         self._encode = encode
+        # Every state change and its notification happen together under this lock,
+        # so status() never runs ahead of the notifications.
         self._cond = threading.Condition()
         self._queue: deque[_Job] = deque()
         self._installs: deque[Callable[[], str]] = deque()
         self._jobs: list[_Job] = []
         self._current: _Job | None = None
         self._paused = False
+        self._paused_for_tool = False
         self._reason = ""
         self._secret = ""
         self._stop = False
@@ -191,26 +207,28 @@ class Downloader:
     # --- public API (called from the RPC thread) ----------------------------
 
     def enqueue(self, tracks: list[TrackRequest]) -> list[dict]:
-        done = self._cache.get_downloads([t.spotify_id for t in tracks])
         results: list[dict] = []
         with self._cond:
-            active = {j.track.spotify_id for j in self._queue}
+            done = self._cache.get_downloads([t.spotify_id for t in tracks])
+            active = {j.track.spotify_id: j for j in self._queue}
             if self._current is not None:
-                active.add(self._current.track.spotify_id)
+                active[self._current.track.spotify_id] = self._current
             for t in tracks:
+                existing = active.get(t.spotify_id)
+                if existing is not None:
+                    # Same track already on its way: answer with that job, no new row.
+                    results.append(existing.summary())
+                    continue
                 job = _Job(uuid.uuid4().hex, t)
                 rec = done.get(t.spotify_id)
-                if t.spotify_id in active:
-                    job.state, job.message = "skipped", "Already queued"
-                elif rec and rec.status == "done" and rec.path and Path(rec.path).exists():
+                if rec and rec.status == "done" and rec.path and Path(rec.path).exists():
                     job.state, job.message, job.path = "skipped", "Already downloaded", rec.path
                 else:
-                    active.add(t.spotify_id)
+                    active[t.spotify_id] = job
                     self._queue.append(job)
                     self._jobs.append(job)
-                # Under the lock, so "queued" always goes out before the worker's "downloading".
                 self._progress(job)
-                results.append({"jobId": job.id, "spotifyId": t.spotify_id, "state": job.state, "path": job.path})
+                results.append(job.summary())
             if self._queue:
                 self._start_locked()
             self._cond.notify_all()
@@ -224,27 +242,24 @@ class Downloader:
         return {"jobId": INSTALL_JOB}
 
     def cancel(self, job_id: str | None = None) -> int:
-        dropped: list[_Job] = []
         count = 0
         with self._cond:
             for job in list(self._queue):
                 if job_id is None or job.id == job_id:
                     self._queue.remove(job)
                     job.state, job.message = "cancelled", ""
-                    dropped.append(job)
+                    self._progress(job)
+                    count += 1
             cur = self._current
             if cur is not None and (job_id is None or cur.id == job_id) and not cur.cancel.is_set():
                 cur.cancel.set()
                 count += 1
-        for job in dropped:
-            self._progress(job)
-        return count + len(dropped)
+            self._prune_locked()
+        return count
 
     def resume(self) -> None:
         with self._cond:
-            self._paused, self._reason = False, ""
-            self._cond.notify_all()
-        self._emit("download.queue", {"paused": False, "reason": ""})
+            self._resume_locked()
 
     def status(self) -> dict:
         with self._cond:
@@ -288,9 +303,9 @@ class Downloader:
                 continue
             try:
                 self._run_job(job)
-            finally:
-                with self._cond:
-                    self._current = None
+            except Exception as e:  # noqa: BLE001 - the worker must outlive any one job
+                log.exception("download job %s crashed", job.id)
+                self._crashed(job, e)
 
     def _run_install(self, task: Callable[[], str]) -> None:
         self._emit_install("downloading", "")
@@ -298,8 +313,11 @@ class Downloader:
             result = task()
         except Exception as e:  # noqa: BLE001 - any install error is reported, not raised
             self._emit_install("failed", str(e) or type(e).__name__)
-        else:
-            self._emit_install("done", result or "")
+            return
+        self._emit_install("done", result or "")
+        with self._cond:
+            if self._paused and self._paused_for_tool:
+                self._resume_locked()
 
     def _emit_install(self, state: str, message: str) -> None:
         self._emit("download.progress", {
@@ -308,14 +326,37 @@ class Downloader:
         })
 
     def _run_job(self, job: _Job) -> None:
-        tmp: Path | None = None
+        # Clean up first, then publish: once a job reads as finished, its temp
+        # dir is gone and the same track can be queued again.
+        tmps: list[Path] = []
+        try:
+            outcome = self._attempt(job, tmps)
+        finally:
+            for tmp in tmps:
+                shutil.rmtree(tmp, ignore_errors=True)
+        if isinstance(outcome, _Pause):
+            self._pause(job, outcome)
+            return
+        state, detail = outcome
+        detail = self._scrub(detail)
+        if state == "done":
+            self._cache.record_download(
+                job.track.spotify_id, status="done", path=detail, playlist_name=job.track.playlist_name,
+            )
+        elif state == "failed":
+            self._record_failure(job, detail)
+        self._finish(job, state, detail)
+
+    def _attempt(self, job: _Job, tmps: list[Path]) -> tuple[str, str] | _Pause:
+        """Download and convert one track: ``(state, path-or-error)`` or a pause."""
         try:
             try:
                 cfg = self._config()
             except ToolMissing as e:
-                raise _Pause(str(e)) from None
+                raise _Pause(str(e), tool=True) from None
             self._secret = cfg.client_secret
             tmp, target_dir = self._prepare(cfg, job)
+            tmps.append(tmp)
             self._set(job, "downloading")
             source = self._download(cfg, job, tmp)
             self._set(job, "converting")
@@ -327,28 +368,15 @@ class Downloader:
             final = target_dir / f"{source.stem}.mp3"
             if not final.exists():
                 shutil.move(str(encoded), str(final))
-            self._cache.record_download(
-                job.track.spotify_id, status="done", path=str(final), playlist_name=job.track.playlist_name,
-            )
-            job.path = str(final)
-            self._set(job, "done")
+            return "done", str(final)
         except _Pause as e:
-            if job.cancel.is_set():
-                self._set(job, "cancelled")
-            else:
-                self._pause(job, str(e))
+            return e
         except _Cancelled:
-            self._set(job, "cancelled")
-        except TranscodeError as e:
-            if job.cancel.is_set():
-                self._set(job, "cancelled")
-            else:
-                self._fail(job, str(e))
+            return "cancelled", ""
         except Exception as e:  # noqa: BLE001 - one bad track must not stop the queue
-            self._fail(job, str(e) or type(e).__name__)
-        finally:
-            if tmp is not None:
-                shutil.rmtree(tmp, ignore_errors=True)
+            if job.cancel.is_set():  # e.g. TranscodeError("cancelled")
+                return "cancelled", ""
+            return "failed", str(e) or type(e).__name__
 
     def _prepare(self, cfg: DownloadConfig, job: _Job) -> tuple[Path, Path]:
         root = Path(cfg.folder)
@@ -366,45 +394,82 @@ class Downloader:
 
     def _download(self, cfg: DownloadConfig, job: _Job, tmp: Path) -> Path:
         rc, out = self._run(spotdl_command(cfg, job.track.url, tmp, "opus"), job.cancel)
-        if not job.cancel.is_set() and rc != 0 and not self._audio(tmp) and not is_rate_limited(out):
+        # spotDL can exit 0 after a per-song failure, so "no file" decides the retry.
+        if not job.cancel.is_set() and not self._audio(tmp) and not is_rate_limited(out):
             rc, out = self._run(spotdl_command(cfg, job.track.url, tmp, "m4a"), job.cancel)
         if job.cancel.is_set():
             raise _Cancelled
         files = self._audio(tmp)
-        if rc != 0 or len(files) != 1:
-            if not files and is_rate_limited(out):
+        if not files:
+            if is_rate_limited(out):
                 raise _Pause(RATE_LIMITED)
-            if rc != 0:
-                raise _Failed(_last_line(out) or f"spotDL exited {rc}")
-            raise _Failed("spotDL produced no audio file" if not files else "spotDL produced more than one file")
+            raise _Failed(_last_line(out) or (f"spotDL exited {rc}" if rc else "spotDL produced no audio file"))
+        if rc != 0:
+            raise _Failed(_last_line(out) or f"spotDL exited {rc}")
+        if len(files) > 1:
+            raise _Failed("spotDL produced more than one file")
         return files[0]
 
     @staticmethod
     def _audio(tmp: Path) -> list[Path]:
         return [p for p in tmp.iterdir() if p.is_file() and p.suffix.lower() in _AUDIO_EXTS]
 
-    # --- state + notifications --------------------------------------------
+    # --- state + notifications (callers hold no lock) ------------------------
 
-    def _set(self, job: _Job, state: str, message: str = "") -> None:
+    def _set(self, job: _Job, state: str) -> None:
         with self._cond:
-            job.state, job.message = state, self._scrub(message)
-        self._progress(job)
+            job.state, job.message = state, ""
+            self._progress(job)
 
-    def _fail(self, job: _Job, message: str) -> None:
-        message = self._scrub(message)
+    def _finish(self, job: _Job, state: str, detail: str) -> None:
+        with self._cond:
+            if self._current is job:
+                self._current = None
+            job.state = state
+            job.message = detail if state == "failed" else ""
+            job.path = detail if state == "done" else ""
+            self._progress(job)
+            self._prune_locked()
+
+    def _record_failure(self, job: _Job, message: str) -> None:
         self._cache.record_download(
             job.track.spotify_id, status="failed", playlist_name=job.track.playlist_name, error=message,
         )
-        self._set(job, "failed", message)
 
-    def _pause(self, job: _Job, reason: str) -> None:
-        reason = self._scrub(reason)
+    def _crashed(self, job: _Job, error: Exception) -> None:
+        message = self._scrub(str(error) or type(error).__name__)
+        try:
+            self._record_failure(job, message)
+        except Exception:  # noqa: BLE001 - best effort; the cache may be what broke
+            log.exception("could not record failed download %s", job.track.spotify_id)
+        self._finish(job, "failed", message)
+
+    def _pause(self, job: _Job, pause: _Pause) -> None:
+        reason = self._scrub(str(pause))
         with self._cond:
+            if self._current is job:
+                self._current = None
+            if job.cancel.is_set():
+                job.state, job.message = "cancelled", ""
+                self._progress(job)
+                self._prune_locked()
+                return
             job.state, job.message = "queued", ""
             self._queue.appendleft(job)
-            self._paused, self._reason = True, reason
-        self._progress(job)
-        self._emit("download.queue", {"paused": True, "reason": reason})
+            self._paused, self._reason, self._paused_for_tool = True, reason, pause.tool
+            self._progress(job)
+            self._emit("download.queue", {"paused": True, "reason": reason})
+
+    def _resume_locked(self) -> None:
+        self._paused, self._reason, self._paused_for_tool = False, "", False
+        self._emit("download.queue", {"paused": False, "reason": ""})
+        self._cond.notify_all()
+
+    def _prune_locked(self) -> None:
+        finished = [j for j in self._jobs if j.state in _FINISHED]
+        if len(finished) > MAX_FINISHED:
+            drop = {id(j) for j in finished[: len(finished) - MAX_FINISHED]}
+            self._jobs = [j for j in self._jobs if id(j) not in drop]
 
     def _progress(self, job: _Job) -> None:
         self._emit("download.progress", {

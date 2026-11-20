@@ -8,6 +8,7 @@ from pathlib import Path
 import psutil
 import pytest
 
+from rbsync import downloader
 from rbsync.cache import Cache
 from rbsync.downloader import (
     DownloadConfig,
@@ -156,7 +157,8 @@ def test_run_process_cancel_kills_grandchildren(tmp_path):
     script = (
         "import subprocess, sys, time\n"
         "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])\n"
-        f"open({str(pid_file)!r}, 'w').write(str(p.pid))\n"
+        f"open({str(pid_file) + '.tmp'!r}, 'w').write(str(p.pid))\n"
+        f"import os; os.replace({str(pid_file) + '.tmp'!r}, {str(pid_file)!r})\n"
         "time.sleep(30)\n"
     )
     cancel = threading.Event()
@@ -165,8 +167,14 @@ def test_run_process_cancel_kills_grandchildren(tmp_path):
     run_process([sys.executable, "-c", script], cancel)
     assert time.monotonic() - started < 5
     grandchild = int(pid_file.read_text())
-    wait_until(lambda: not psutil.pid_exists(grandchild)
-               or psutil.Process(grandchild).status() == psutil.STATUS_ZOMBIE)
+
+    def gone():
+        try:
+            return psutil.Process(grandchild).status() == psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            return True
+
+    wait_until(gone)
 
 
 def test_one_track_end_to_end(env):
@@ -200,13 +208,28 @@ def test_enqueue_skips_queued_and_done(env, tmp_path):
     env.cache.record_download("sp2", status="done", path=str(existing), playlist_name="Other")
     d = env(run)
     res = d.enqueue([track(1), track(1), track(2)])
-    assert [r["state"] for r in res] == ["queued", "skipped", "skipped"]
+    assert res[0]["state"] == "queued" and res[2]["state"] == "skipped"
+    # A duplicate of an active job answers with that job, not a new "skipped" one.
+    assert res[1]["jobId"] == res[0]["jobId"] and res[1]["state"] in {"queued", "downloading"}
     assert res[2]["path"] == str(existing)
     assert len(d.status()["jobs"]) == 1
-    assert d.enqueue([track(1)])[0]["state"] == "skipped"
+    again = d.enqueue([track(1)])[0]
+    assert again["jobId"] == res[0]["jobId"] and again["state"] in {"queued", "downloading"}
     gate.set()
     wait_all_terminal(d)
     assert len(inner.calls) == 1
+    sp1_ids = {p["jobId"] for m, p in env.events if m == "download.progress" and p["spotifyId"] == "sp1"}
+    assert sp1_ids == {res[0]["jobId"]}
+    assert [p["state"] for m, p in env.events if p.get("spotifyId") == "sp2"] == ["skipped"]
+
+
+def test_finished_job_can_be_enqueued_again_right_away(env, tmp_path):
+    d = env(writes_file())
+    [first] = d.enqueue([track()])
+    wait_all_terminal(d)
+    (env.folder / "Warmup" / "Artist - Title.mp3").unlink()
+    [second] = d.enqueue([track()])
+    assert second["state"] == "queued" and second["jobId"] != first["jobId"]
 
 
 def test_done_record_with_deleted_file_is_downloaded_again(env, tmp_path):
@@ -245,6 +268,34 @@ def test_m4a_fallback_when_opus_fails(env):
     assert formats == ["opus", "m4a"]
     assert job_states(d) == {"sp1": "done"}
     assert (env.folder / "Warmup" / "Artist - Title.mp3").exists()
+
+
+def test_m4a_fallback_when_opus_exits_zero_without_a_file(env):
+    formats = []
+
+    def run(args, cancel):
+        formats.append(fmt_of(args))
+        if fmt_of(args) == "opus":
+            return 0, "LookupError: No results found for song"
+        (out_dir_of(args) / "Artist - Title.m4a").write_bytes(b"audio")
+        return 0, ""
+
+    d = env(run)
+    d.enqueue([track()])
+    wait_all_terminal(d)
+    assert formats == ["opus", "m4a"]
+    assert job_states(d) == {"sp1": "done"}
+
+
+def test_exit_zero_without_any_file_fails_with_last_line(env):
+    def run(args, cancel):
+        return 0, "LookupError: No results found for song\n"
+
+    d = env(run)
+    d.enqueue([track()])
+    wait_all_terminal(d)
+    [job] = d.status()["jobs"]
+    assert job["state"] == "failed" and job["message"] == "LookupError: No results found for song"
 
 
 def test_failure_continues_queue(env):
@@ -318,6 +369,61 @@ def test_missing_tool_pauses_queue(env):
     wait_until(lambda: d.status()["paused"])
     assert d.status()["reason"] == "spotdl not found"
     assert job_states(d) == {"sp1": "queued"}
+
+
+def test_install_resumes_a_queue_paused_for_a_missing_tool(env, tmp_path):
+    installed = threading.Event()
+
+    def config():
+        if not installed.is_set():
+            raise ToolMissing("spotdl not found")
+        return cfg(tmp_path)
+
+    def task():
+        installed.set()
+        return "/bin/spotdl"
+
+    d = env(writes_file(), config=config)
+    d.enqueue([track()])
+    wait_until(lambda: d.status()["paused"])
+    d.install(task)
+    wait_all_terminal(d)
+    assert job_states(d) == {"sp1": "done"}
+    assert d.status()["paused"] is False
+    assert ("download.queue", {"paused": False, "reason": ""}) in env.events
+
+
+def test_install_keeps_a_rate_limit_pause(env):
+    d = env(lambda args, cancel: (1, "HTTP Error 429: Too Many Requests"))
+    d.enqueue([track()])
+    wait_until(lambda: d.status()["paused"])
+    d.install(lambda: "/bin/spotdl")
+    wait_until(lambda: any(p.get("jobId") == "install" and p["state"] == "done" for _, p in env.events))
+    st = d.status()
+    assert st["paused"] is True and "rate-limited" in st["reason"].lower()
+    assert job_states(d) == {"sp1": "queued"}
+
+
+def test_worker_survives_a_failing_cache_write(env, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk I/O error")
+
+    monkeypatch.setattr(env.cache, "record_download", broken)
+    d = env(writes_file())
+    d.enqueue([track(1), track(2)])
+    wait_all_terminal(d)
+    jobs = d.status()["jobs"]
+    assert [j["state"] for j in jobs] == ["failed", "failed"]
+    assert all(j["message"] == "disk I/O error" for j in jobs)
+    assert any(t.name == "rbsync-downloader" and t.is_alive() for t in threading.enumerate())
+
+
+def test_status_keeps_at_most_the_last_finished_jobs(env, monkeypatch):
+    monkeypatch.setattr(downloader, "MAX_FINISHED", 2)
+    d = env(lambda args, cancel: (1, "boom"))
+    d.enqueue([track(n) for n in range(1, 5)])
+    wait_until(lambda: len(env.cache.get_downloads(["sp4"])) == 1
+               and [j["spotifyId"] for j in d.status()["jobs"]] == ["sp3", "sp4"])
 
 
 def blocking_runner():
