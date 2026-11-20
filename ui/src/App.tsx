@@ -476,12 +476,14 @@ export default function App() {
     () => (activePlan?.tracks ?? []).map((entry) => entry.track.id),
     [activePlan],
   );
-  const downloader = useDownloads(activeTrackIds);
+  const downloadsOn = Boolean(settings?.downloaderEnabled);
+  // Off: no downloader calls at all. Saved settings (a spotDL path, say) can
+  // change which tools are found, so the status is read again after each save.
+  const downloader = useDownloads(activeTrackIds, { enabled: downloadsOn, refreshOn: settings });
   const downloadTitles = useMemo(
     () => new Map((activePlan?.tracks ?? []).map((entry) => [entry.track.id, entry.track.display])),
     [activePlan],
   );
-  const downloadsOn = Boolean(settings?.downloaderEnabled);
   const downloadRows = (rows: TrackPlan[]) =>
     run("Queueing downloads", () =>
       downloader.enqueue(

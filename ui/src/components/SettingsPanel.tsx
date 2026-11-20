@@ -35,12 +35,16 @@ export function SettingsPanel({
   const [dlClientId, setDlClientId] = useState(settings.downloaderClientId ?? "");
   const [dlSecret, setDlSecret] = useState("");
   const [spotdlPath, setSpotdlPath] = useState(settings.spotdlPath ?? "");
-  const { status, refreshStatus, installState, install } = useDownloads([]);
+  const { status, refreshStatus, installState, install, cancel } = useDownloads([], {
+    enabled: dlEnabled,
+  });
   const installing = installState.state === "downloading";
 
   // Applies at once rather than on Save: switching on may need to fetch spotDL.
   const toggleDownloads = async (enabled: boolean) => {
     setDlEnabled(enabled);
+    // Switching off stops what is queued or running, too.
+    if (!enabled) await cancel().catch(() => {});
     await onSave({ downloaderEnabled: enabled });
     if (!enabled) return;
     const current = status ?? (await refreshStatus().catch(() => null));

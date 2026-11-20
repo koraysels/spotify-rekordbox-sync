@@ -19,6 +19,13 @@ export interface InstallState {
   message: string;
 }
 
+export interface DownloadsOptions {
+  /** False makes no calls at all: the downloader is switched off. */
+  enabled?: boolean;
+  /** The status is read again whenever this changes (e.g. saved settings). */
+  refreshOn?: unknown;
+}
+
 /**
  * Download state for a set of tracks.
  *
@@ -27,7 +34,10 @@ export interface InstallState {
  * checked on disk. In browser dev mode there is no notification stream, so
  * the status is polled while anything is in flight.
  */
-export function useDownloads(spotifyIds: string[]) {
+export function useDownloads(
+  spotifyIds: string[],
+  { enabled = true, refreshOn }: DownloadsOptions = {},
+) {
   const [jobs, setJobs] = useState<Map<string, DownloadJob>>(new Map());
   const [records, setRecords] = useState<Map<string, DownloadRecord>>(new Map());
   const [status, setStatus] = useState<DownloaderStatus | null>(null);
@@ -62,15 +72,18 @@ export function useDownloads(spotifyIds: string[]) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     // Subscribing to an external system (the core); state is set when it answers.
     refreshStatus().catch(() => {});
-  }, [refreshStatus]);
+  }, [enabled, refreshOn, refreshStatus]);
 
   useEffect(() => {
+    if (!enabled) return;
     refreshRecords(idsKey ? idsKey.split(",") : []).catch(() => {});
-  }, [idsKey, refreshRecords]);
+  }, [enabled, idsKey, refreshRecords]);
 
   useEffect(() => {
+    if (!enabled) return;
     const offProgress = rpc.onNotification("download.progress", (params) => {
       const job = params as DownloadJob;
       if (job.jobId === INSTALL_JOB) {
@@ -98,11 +111,11 @@ export function useDownloads(spotifyIds: string[]) {
       offProgress();
       offQueue();
     };
-  }, [refreshRecords, refreshStatus]);
+  }, [enabled, refreshRecords, refreshStatus]);
 
   const anyActive = [...jobs.values()].some((job) => ACTIVE.has(job.state));
   useEffect(() => {
-    if (isTauri() || !anyActive) return;
+    if (isTauri() || !enabled || !anyActive) return;
     const timer = window.setInterval(() => {
       void refreshStatus()
         .then((next) => {
@@ -114,7 +127,7 @@ export function useDownloads(spotifyIds: string[]) {
         .catch(() => {});
     }, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [anyActive, refreshStatus, refreshRecords]);
+  }, [enabled, anyActive, refreshStatus, refreshRecords]);
 
   const enqueue = useCallback(
     async (playlistName: string, tracks: SpotifyTrack[]) => {
