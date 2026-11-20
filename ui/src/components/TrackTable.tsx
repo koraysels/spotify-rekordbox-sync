@@ -7,7 +7,15 @@ import { camelotOf } from "../keys";
 
 import { copyText, searchQueryFor } from "../clipboard";
 import { isTauri } from "../rpc";
-import type { Band, PlaylistPlan, SpotifyTrack, TrackFeatures, TrackPlan } from "../types";
+import type {
+  Band,
+  DownloadJob,
+  DownloadRecord,
+  PlaylistPlan,
+  SpotifyTrack,
+  TrackFeatures,
+  TrackPlan,
+} from "../types";
 
 export interface FileStatus {
   exists: boolean;
@@ -23,6 +31,47 @@ export interface BrowseState {
 }
 
 export type BandFilter = "all" | Band;
+
+/** Downloader state for the table. Absent, or `enabled: false`, leaves the table as it was. */
+export interface DownloadProps {
+  enabled: boolean;
+  /** Whether spotDL is installed; downloading is disabled until it is. */
+  spotdlReady: boolean;
+  jobs: Map<string, DownloadJob>;
+  records: Map<string, DownloadRecord>;
+  onDownload: (rows: TrackPlan[]) => void;
+}
+
+const ACTIVE_JOB = new Set(["queued", "downloading", "converting"]);
+const ACTIVE_LABEL: Record<string, string> = {
+  queued: "queued",
+  downloading: "downloading…",
+  converting: "converting…",
+};
+const INSTALL_TIP = "Install spotDL in Settings first";
+
+/** Where a track stands with the downloader. */
+function downloadStateOf(
+  spotifyId: string,
+  downloads: DownloadProps,
+): { kind: "active"; state: string } | { kind: "downloaded"; path: string } | { kind: "failed"; error: string } | null {
+  const job = downloads.jobs.get(spotifyId);
+  if (job && ACTIVE_JOB.has(job.state)) return { kind: "active", state: job.state };
+  const record = downloads.records.get(spotifyId);
+  if (record?.status === "done" && record.exists) return { kind: "downloaded", path: record.path };
+  if (job?.state === "failed") return { kind: "failed", error: job.message };
+  if (record?.status === "failed") return { kind: "failed", error: record.error };
+  return null;
+}
+
+/** A missing row that is neither downloading nor already downloaded. */
+function needsDownload(row: TrackPlan, downloads: DownloadProps): boolean {
+  if (row.band !== "reject") return false;
+  const state = downloadStateOf(row.track.id, downloads);
+  return state?.kind !== "active" && state?.kind !== "downloaded";
+}
+
+const LOWQ = /\blowq\b/i;
 
 interface Props {
   plan: PlaylistPlan | null;
@@ -42,6 +91,7 @@ interface Props {
   features: Map<string, TrackFeatures>;
   /** Take back an earlier accept or reject for this row's track. */
   onUndoDecision: (row: TrackPlan) => void;
+  downloads?: DownloadProps;
 }
 
 type SortKey = "none" | "energy" | "dance" | "mood" | "bpm";
@@ -91,6 +141,7 @@ export function TrackTable({
   files,
   features,
   onUndoDecision,
+  downloads,
 }: Props) {
   const blocked = plan?.error ?? null;
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "none", desc: true });
@@ -263,6 +314,8 @@ export function TrackTable({
 
   const selectedTracks = rows.filter((row) => selectedIds.has(row.track.id));
   const counts = plan.coverage;
+  const dl = downloads?.enabled ? downloads : undefined;
+  const missingToDownload = dl ? rows.filter((row) => needsDownload(row, dl)) : [];
 
   /** Menu actions for a row, or for the whole selection when the row is part of it. */
   const menuItems = (row: TrackPlan): MenuItem[] => {
@@ -337,6 +390,26 @@ export function TrackTable({
         onSelect: () => void copyText(targets.map((t) => searchQueryFor(t.track)).join("\n")),
       });
     }
+    if (dl) {
+      const wanted = targets.filter((t) => needsDownload(t, dl));
+      const downloaded = !many ? downloadStateOf(row.track.id, dl) : null;
+      if (wanted.length > 0 || downloaded?.kind === "downloaded") items.push({ separator: true });
+      if (wanted.length > 0) {
+        items.push({
+          label: "Download",
+          hint: wanted.length > 1 ? `${wanted.length} tracks` : undefined,
+          disabled: !dl.spotdlReady,
+          onSelect: () => dl.onDownload(wanted),
+        });
+      }
+      if (downloaded?.kind === "downloaded") {
+        items.push({
+          label: "Show download in Finder",
+          disabled: !isTauri(),
+          onSelect: () => void revealItemInDir(downloaded.path).catch(() => {}),
+        });
+      }
+    }
     return items;
   };
 
@@ -356,6 +429,16 @@ export function TrackTable({
           <button className="link" onClick={() => onSelect(new Set())}>
             clear
           </button>
+          {dl && missingToDownload.length > 0 && (
+            <button
+              className="accept"
+              disabled={!dl.spotdlReady}
+              title={dl.spotdlReady ? "Download the missing tracks with spotDL" : INSTALL_TIP}
+              onClick={() => dl.onDownload(missingToDownload)}
+            >
+              Download {missingToDownload.length} missing
+            </button>
+          )}
           <button
             className="accept"
             disabled={selectedTracks.length === 0}
@@ -429,6 +512,12 @@ export function TrackTable({
                   </td>
                   <td className="col-band">
                     <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
+                    {dl && <DownloadBadge state={downloadStateOf(row.track.id, dl)} />}
+                    {row.band !== "reject" && best && LOWQ.test(best.comment ?? "") && (
+                      <span className="band lowq" title="Fetched by rbsync from a lossy source; replace it when you can.">
+                        lowq
+                      </span>
+                    )}
                   </td>
                   <td className="col-spotify" title={`${row.track.display} · ${formatMs(row.track.durationMs)}`}>
                     <span className="cell-text">{row.track.display}</span>
@@ -553,6 +642,25 @@ function FileAwareBand({ row, file }: { row: TrackPlan; file?: FileStatus }) {
     );
   }
   return <span className={`band ${row.band}`}>{BAND_LABEL[row.band]}</span>;
+}
+
+function DownloadBadge({ state }: { state: ReturnType<typeof downloadStateOf> }) {
+  if (!state) return null;
+  if (state.kind === "active") {
+    return <span className="band dl-active">{ACTIVE_LABEL[state.state]}</span>;
+  }
+  if (state.kind === "downloaded") {
+    return (
+      <span className="band dl-done" title={state.path}>
+        downloaded
+      </span>
+    );
+  }
+  return (
+    <span className="band reject" title={state.error}>
+      download failed
+    </span>
+  );
 }
 
 /** Opens the containing folder with the matched file selected. */

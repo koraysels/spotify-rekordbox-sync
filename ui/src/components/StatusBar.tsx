@@ -10,6 +10,8 @@ interface Props {
   onBackups: () => void;
   onEnergy: () => void;
   onDecisions: () => void;
+  /** Shown only when the downloader is enabled. */
+  onDownloads?: () => void;
 }
 
 export function StatusBar({
@@ -21,6 +23,7 @@ export function StatusBar({
   onBackups,
   onEnergy,
   onDecisions,
+  onDownloads,
 }: Props) {
   return (
     <header className="statusbar" data-tauri-drag-region>
@@ -65,6 +68,11 @@ export function StatusBar({
         <button className="ghost" onClick={onDecisions}>
           Decisions
         </button>
+        {onDownloads && (
+          <button className="ghost" onClick={onDownloads}>
+            Downloads
+          </button>
+        )}
         <button className="ghost" onClick={onHistory}>
           History
         </button>

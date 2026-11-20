@@ -404,6 +404,35 @@ tbody td {
   border-color: rgba(127, 178, 229, 0.45);
 }
 
+/* Downloader badges sit after the band in the state column. */
+.col-band .band + .band {
+  margin-left: 4px;
+}
+.band.dl-active {
+  color: #7FB2E5;
+  border-color: rgba(127, 178, 229, 0.45);
+}
+.band.dl-done {
+  color: var(--accent);
+  border-color: rgba(29, 185, 84, 0.4);
+}
+.band.lowq {
+  color: var(--review);
+  border-color: rgba(216, 161, 58, 0.4);
+}
+
+.download-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+}
+.download-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+
 .health {
   display: grid;
   gap: 6px;

@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import "./App.css";
 import { isTauri, rpc } from "./rpc";
+import { useDownloads } from "./downloads";
 import { openSyncWindow } from "./syncWindow";
 import { serveRpcToOtherWindows } from "./bridge";
 import { revealPath } from "./reveal";
@@ -17,6 +18,7 @@ import { PlaylistList } from "./components/PlaylistList";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { RekordboxPanel } from "./components/RekordboxPanel";
 import { EnergyPanel } from "./components/EnergyPanel";
+import { DownloadPanel } from "./components/DownloadPanel";
 import { DecisionsPanel } from "./components/DecisionsPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBar } from "./components/StatusBar";
@@ -64,6 +66,7 @@ export default function App() {
   const [showBackups, setShowBackups] = useState(false);
   const [showEnergy, setShowEnergy] = useState(false);
   const [showDecisions, setShowDecisions] = useState(false);
+  const [showDownloads, setShowDownloads] = useState(false);
   const [features, setFeatures] = useState<Map<string, TrackFeatures>>(new Map());
   // Read inside the fetch loop without making it a dependency, or every arriving
   // chunk would restart the loop.
@@ -468,6 +471,25 @@ export default function App() {
 
   const connected = Boolean(status?.authenticated);
 
+  // Memoised so the hook's effects do not re-run on every render.
+  const activeTrackIds = useMemo(
+    () => (activePlan?.tracks ?? []).map((entry) => entry.track.id),
+    [activePlan],
+  );
+  const downloader = useDownloads(activeTrackIds);
+  const downloadTitles = useMemo(
+    () => new Map((activePlan?.tracks ?? []).map((entry) => [entry.track.id, entry.track.display])),
+    [activePlan],
+  );
+  const downloadsOn = Boolean(settings?.downloaderEnabled);
+  const downloadRows = (rows: TrackPlan[]) =>
+    run("Queueing downloads", () =>
+      downloader.enqueue(
+        activePlan?.playlist.name ?? "",
+        rows.map((row) => row.track),
+      ),
+    );
+
   return (
     <div className="app">
       <StatusBar
@@ -479,6 +501,7 @@ export default function App() {
         onBackups={() => setShowBackups(true)}
         onEnergy={() => setShowEnergy(true)}
         onDecisions={() => setShowDecisions(true)}
+        onDownloads={downloadsOn ? () => setShowDownloads(true) : undefined}
       />
 
       <UpdateBanner />
@@ -549,6 +572,13 @@ export default function App() {
           files={files}
           features={features}
           onUndoDecision={(row) => void undoDecision(row)}
+          downloads={{
+            enabled: downloadsOn,
+            spotdlReady: Boolean(downloader.status?.spotdl.path),
+            jobs: downloader.jobs,
+            records: downloader.records,
+            onDownload: (rows) => void downloadRows(rows),
+          }}
         />
       </main>
       )}
@@ -567,6 +597,17 @@ export default function App() {
       />
 
 
+      {showDownloads && downloadsOn && (
+        <DownloadPanel
+          jobs={downloader.jobs}
+          records={downloader.records}
+          status={downloader.status}
+          titles={downloadTitles}
+          onCancelAll={() => void downloader.cancel()}
+          onResume={() => void downloader.resume()}
+          onClose={() => setShowDownloads(false)}
+        />
+      )}
       {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} />}
       {showLibrary && <RekordboxPanel onClose={() => setShowLibrary(false)} />}
       {showDecisions && (
