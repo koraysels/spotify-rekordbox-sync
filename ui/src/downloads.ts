@@ -12,6 +12,12 @@ const ACTIVE = new Set(["queued", "downloading", "converting"]);
 const POLL_MS = 1500;
 const INSTALL_JOB = "install";
 
+/** Latest spotDL install progress; `message` carries the failure reason. */
+export interface InstallState {
+  state: "idle" | "downloading" | "done" | "failed";
+  message: string;
+}
+
 /**
  * Download state for a set of tracks.
  *
@@ -24,6 +30,10 @@ export function useDownloads(spotifyIds: string[]) {
   const [jobs, setJobs] = useState<Map<string, DownloadJob>>(new Map());
   const [records, setRecords] = useState<Map<string, DownloadRecord>>(new Map());
   const [status, setStatus] = useState<DownloaderStatus | null>(null);
+  const [installState, setInstallState] = useState<InstallState>({
+    state: "idle",
+    message: "",
+  });
 
   const idsKey = spotifyIds.join(",");
 
@@ -63,6 +73,10 @@ export function useDownloads(spotifyIds: string[]) {
     const offProgress = rpc.onNotification("download.progress", (params) => {
       const job = params as DownloadJob;
       if (job.jobId === INSTALL_JOB) {
+        setInstallState({
+          state: job.state === "done" || job.state === "failed" ? job.state : "downloading",
+          message: job.message ?? "",
+        });
         // Tools just changed: re-read what is installed.
         if (job.state === "done" || job.state === "failed") {
           void refreshStatus().catch(() => {});
@@ -70,7 +84,7 @@ export function useDownloads(spotifyIds: string[]) {
         return;
       }
       setJobs((prev) => new Map(prev).set(job.spotifyId, job));
-      if (job.state === "done") {
+      if (job.state === "done" || job.state === "failed") {
         void refreshRecords([job.spotifyId]).catch(() => {});
       }
     });
@@ -117,7 +131,8 @@ export function useDownloads(spotifyIds: string[]) {
       // The core also notifies, but over HTTP there is no stream: seed from the reply.
       setJobs((prev) => {
         const next = new Map(prev);
-        for (const job of results) next.set(job.spotifyId, job);
+        // Enqueue replies are summaries without a message.
+        for (const job of results) next.set(job.spotifyId, { ...job, message: job.message ?? "" });
         return next;
       });
     },
@@ -134,8 +149,17 @@ export function useDownloads(spotifyIds: string[]) {
   }, []);
 
   const install = useCallback(async () => {
-    await rpc.call("downloader.install");
+    setInstallState({ state: "downloading", message: "" });
+    try {
+      await rpc.call("downloader.install");
+    } catch (error) {
+      setInstallState({
+        state: "failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }, []);
 
-  return { jobs, records, status, enqueue, cancel, resume, install };
+  return { jobs, records, status, installState, enqueue, cancel, resume, install };
 }

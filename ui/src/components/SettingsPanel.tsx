@@ -1,10 +1,15 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
+import { useDownloads } from "../downloads";
+import { isTauri } from "../rpc";
 import type { Settings } from "../types";
+
+type SettingsPatch = Partial<Settings> & { downloaderClientSecret?: string };
 
 interface Props {
   settings: Settings;
   authenticated: boolean;
-  onSave: (patch: Partial<Settings>) => void;
+  onSave: (patch: SettingsPatch) => void | Promise<void>;
   onConnect: () => void;
   onDisconnect: () => void;
   onClose: () => void;
@@ -24,6 +29,28 @@ export function SettingsPanel({
   const [allowRemovals, setAllowRemovals] = useState(settings.allowRemovals);
   const [onlySyncable, setOnlySyncable] = useState(settings.onlySyncable);
   const [tagFeatures, setTagFeatures] = useState(settings.tagFeaturesOnSync ?? true);
+
+  const [dlEnabled, setDlEnabled] = useState(settings.downloaderEnabled ?? false);
+  const [dlFolder, setDlFolder] = useState(settings.downloadFolder ?? "");
+  const [dlClientId, setDlClientId] = useState(settings.downloaderClientId ?? "");
+  const [dlSecret, setDlSecret] = useState("");
+  const [spotdlPath, setSpotdlPath] = useState(settings.spotdlPath ?? "");
+  const { status, installState, install } = useDownloads([]);
+  const installing = installState.state === "downloading";
+
+  // Applies at once rather than on Save: switching on may need to fetch spotDL.
+  const toggleDownloads = async (enabled: boolean) => {
+    setDlEnabled(enabled);
+    await onSave({ downloaderEnabled: enabled });
+    if (enabled && status && !status.spotdl.path) {
+      await install().catch(() => {});
+    }
+  };
+
+  const chooseFolder = async () => {
+    const picked = await open({ directory: true, defaultPath: dlFolder || undefined });
+    if (typeof picked === "string") setDlFolder(picked);
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -139,6 +166,92 @@ export function SettingsPanel({
           </p>
         </section>
 
+        <section>
+          <h3>Downloads</h3>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={dlEnabled}
+              disabled={installing}
+              title={installing ? "Installing spotDL…" : undefined}
+              onChange={(event) => void toggleDownloads(event.target.checked)}
+            />
+            Download missing tracks (spotDL)
+          </label>
+          <p className="hint">
+            Downloads come from YouTube Music: Opus around 160 kbps, converted to an mp3
+            bitrate that matches it and labelled lowq. Fine for practice and emergencies;
+            buy the track for club use.
+          </p>
+          {installing && <p className="hint">Installing spotDL…</p>}
+          {installState.state === "failed" && (
+            <p className="hint warn">
+              Installing spotDL failed{installState.message ? `: ${installState.message}` : "."}
+            </p>
+          )}
+          {status && (
+            <p className="hint">
+              {status.spotdl.path
+                ? `spotDL ${status.version} — ${status.spotdl.path} (${status.spotdl.source})`
+                : "spotDL not installed"}
+              <br />
+              {status.ffmpeg ? `ffmpeg ${status.ffmpeg}` : "ffmpeg not found"}
+              {dlEnabled && status.reason ? (
+                <>
+                  <br />
+                  {status.reason}
+                </>
+              ) : null}
+            </p>
+          )}
+          <div className="row">
+            <input
+              className="field"
+              placeholder="Download folder"
+              value={dlFolder}
+              onChange={(event) => setDlFolder(event.target.value)}
+            />
+            {isTauri() && (
+              <button className="ghost" onClick={() => void chooseFolder()}>
+                Choose…
+              </button>
+            )}
+          </div>
+          <input
+            className="field"
+            placeholder="spotDL client ID (optional)"
+            value={dlClientId}
+            onChange={(event) => setDlClientId(event.target.value)}
+          />
+          <div className="row">
+            <input
+              className="field"
+              type="password"
+              placeholder={
+                settings.hasDownloaderSecret
+                  ? "saved"
+                  : "spotDL client secret (optional)"
+              }
+              value={dlSecret}
+              onChange={(event) => setDlSecret(event.target.value)}
+            />
+            {settings.hasDownloaderSecret && (
+              <button
+                className="ghost"
+                onClick={() => void onSave({ downloaderClientSecret: "" })}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <input
+            className="field"
+            placeholder="spotDL path (optional)"
+            value={spotdlPath}
+            onChange={(event) => setSpotdlPath(event.target.value)}
+          />
+        </section>
+
         <div className="modal-actions">
           <button className="ghost" onClick={onClose}>
             Cancel
@@ -153,6 +266,11 @@ export function SettingsPanel({
                 allowRemovals,
                 onlySyncable,
                 tagFeaturesOnSync: tagFeatures,
+                downloaderEnabled: dlEnabled,
+                downloadFolder: dlFolder,
+                downloaderClientId: dlClientId,
+                spotdlPath,
+                ...(dlSecret ? { downloaderClientSecret: dlSecret } : {}),
               });
               onClose();
             }}
