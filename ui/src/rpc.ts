@@ -38,11 +38,20 @@ export class RpcClient {
   private progressHandlers = new Set<ProgressHandler>();
   private notificationHandlers = new Map<string, Set<NotificationHandler>>();
   private buffer = "";
+  private starting: Promise<void> | null = null;
 
   async start(): Promise<void> {
     if (!isTauri()) return;
     if (this.child) return;
+    // Calls made in the same tick share one spawn; each spawning its own would
+    // leave two cores writing the same database.
+    this.starting ??= this.spawnChild().finally(() => {
+      this.starting = null;
+    });
+    await this.starting;
+  }
 
+  private async spawnChild(): Promise<void> {
     const command = Command.sidecar("binaries/rbsync-core");
     command.stdout.on("data", (line: string) => this.onStdout(line));
     command.stderr.on("data", (line: string) => console.debug("[core]", line));
