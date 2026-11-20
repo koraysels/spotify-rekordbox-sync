@@ -4,10 +4,12 @@ from pathlib import Path
 
 import pytest
 
+from rbsync import tools
 from rbsync.tools import (
     SPOTDL_ASSETS,
     InstallError,
     asset_for,
+    download_ffmpeg,
     find_ffmpeg,
     find_spotdl,
     install_spotdl,
@@ -98,3 +100,35 @@ def test_find_ffmpeg_uses_spotdl_copy(tmp_path):
     stub = make_exe(tmp_path / ".spotdl" / exe_name("ffmpeg"))
     assert same_file(find_ffmpeg(env_path="", extra_dirs=[], home=tmp_path), stub)
 
+
+def test_download_ffmpeg_returns_what_spotdl_fetched(monkeypatch):
+    monkeypatch.setattr(tools, "find_ffmpeg", lambda: "/home/u/.spotdl/ffmpeg")
+    calls = []
+
+    def run(args, cancel):
+        calls.append(args)
+        return 0, "Downloaded ffmpeg"
+
+    assert download_ffmpeg("spotdl", run) == "/home/u/.spotdl/ffmpeg"
+    assert calls == [["spotdl", "--download-ffmpeg"]]
+
+
+def test_download_ffmpeg_failure_reports_spotdl_last_line(monkeypatch):
+    monkeypatch.setattr(tools, "find_ffmpeg", lambda: None)
+
+    def fails(args, cancel):
+        return 1, "Downloading ffmpeg\nHTTPError: 403 Forbidden\n"
+
+    with pytest.raises(InstallError, match="403 Forbidden"):
+        download_ffmpeg("spotdl", fails)
+
+
+def test_download_ffmpeg_is_stopped_after_the_timeout(monkeypatch):
+    monkeypatch.setattr(tools, "find_ffmpeg", lambda: None)
+
+    def hangs(args, cancel):
+        assert cancel.wait(5), "the timeout never fired"
+        return -9, "Downloading ffmpeg 10%"
+
+    with pytest.raises(InstallError, match="timed out"):
+        download_ffmpeg("spotdl", hangs, timeout=0.05)

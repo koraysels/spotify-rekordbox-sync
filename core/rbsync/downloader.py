@@ -24,7 +24,7 @@ from typing import Callable
 import psutil
 
 from .cache import Cache
-from .tools import ToolMissing
+from .tools import ToolMissing, last_line
 from .transcode import encode_mp3_lowq, measure_audio_kbps, mp3_bitrate_for
 
 # No leading dot: spotDL strips it from path components and would write elsewhere.
@@ -132,11 +132,6 @@ def _kill_tree(proc: subprocess.Popen) -> None:
         except psutil.Error:
             pass
     proc.wait()
-
-
-def _last_line(output: str) -> str:
-    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
-    return lines[-1] if lines else ""
 
 
 @dataclass
@@ -413,11 +408,11 @@ class Downloader:
         if not files:
             if is_rate_limited(out):
                 raise _Pause(RATE_LIMITED)
-            last = _last_line(out)
+            last = last_line(out)
             raise _Failed(f"spotDL produced no audio file: {last}" if last else
                           f"spotDL exited {rc}" if rc else "spotDL produced no audio file")
         if rc != 0:
-            raise _Failed(_last_line(out) or f"spotDL exited {rc}")
+            raise _Failed(last_line(out) or f"spotDL exited {rc}")
         if len(files) > 1:
             raise _Failed("spotDL produced more than one file")
         return files[0]

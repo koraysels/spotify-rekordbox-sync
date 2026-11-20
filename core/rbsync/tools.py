@@ -14,12 +14,14 @@ import platform
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Callable
 
 import httpx
 
 SPOTDL_VERSION = "4.6.0"
+FFMPEG_TIMEOUT = 300.0  # seconds; it runs on the download worker, so it must end
 _RELEASE_URL = "https://github.com/spotDL/spotify-downloader/releases/download/v{v}/{asset}"
 
 # (sys.platform, machine) -> (release asset name, sha256)
@@ -158,6 +160,33 @@ def install_spotdl(
     return dest
 
 
-def download_ffmpeg(spotdl: str) -> str | None:
-    subprocess.run([spotdl, "--download-ffmpeg"], capture_output=True, check=False)
-    return find_ffmpeg()
+def last_line(output: str) -> str:
+    lines = [ln.strip() for ln in output.splitlines() if ln.strip()]
+    return lines[-1] if lines else ""
+
+
+def download_ffmpeg(
+    spotdl: str,
+    run: Callable[[list[str], threading.Event], tuple[int, str]],
+    timeout: float = FFMPEG_TIMEOUT,
+) -> str:
+    """Have spotDL fetch ffmpeg into ~/.spotdl, and return where it landed.
+
+    ``run`` is the downloader's process runner, which kills spotDL and its
+    children once the event is set; the timer sets it after ``timeout``.
+    """
+    expired = threading.Event()
+    timer = threading.Timer(timeout, expired.set)
+    timer.daemon = True
+    timer.start()
+    try:
+        rc, out = run([spotdl, "--download-ffmpeg"], expired)
+    finally:
+        timer.cancel()
+    found = find_ffmpeg()
+    if found:
+        return found
+    if expired.is_set():
+        raise InstallError(f"Downloading ffmpeg timed out after {round(timeout)} s.")
+    detail = last_line(out) or f"spotDL exited {rc}"
+    raise InstallError(f"ffmpeg could not be downloaded: {detail}")

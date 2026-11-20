@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import paths
-from .downloader import DownloadConfig, Downloader, TrackRequest
+from .downloader import DownloadConfig, Downloader, TrackRequest, run_process
 from .tools import (
     SPOTDL_VERSION, ToolMissing, download_ffmpeg, find_ffmpeg, find_spotdl,
     http_fetch, install_spotdl,
@@ -351,11 +351,7 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
         spotdl, _ = find_spotdl(setting("spotdl_path"), tools)
         if not spotdl:
             spotdl = str(install_spotdl(tools, http_fetch))
-        ffmpeg = find_ffmpeg()
-        if not ffmpeg:
-            ffmpeg = download_ffmpeg(spotdl)
-        if not ffmpeg:
-            raise ToolMissing("spotDL is installed but ffmpeg could not be downloaded.")
+        ffmpeg = find_ffmpeg() or download_ffmpeg(spotdl, run_process)
         return f"spotDL {SPOTDL_VERSION} ready, ffmpeg found at {ffmpeg}"
 
     def downloader_install(**_):
