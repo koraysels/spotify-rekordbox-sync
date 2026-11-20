@@ -77,15 +77,24 @@ def test_find_spotdl_order(tmp_path):
     assert find_spotdl("", tmp_path / "none", env_path="", extra_dirs=[]) == (None, "")
 
 
+def exe_name(name: str) -> str:
+    # shutil.which only matches PATHEXT names (spotdl.exe) on Windows.
+    return name + ".exe" if os.name == "nt" else name
+
+
+def same_file(found: str | None, expected: Path) -> bool:
+    # On Windows which() spells the extension as PATHEXT does (.EXE).
+    return found is not None and os.path.normcase(found) == os.path.normcase(str(expected))
+
+
 def test_find_spotdl_in_known_dir_when_path_is_minimal(tmp_path):
     brew = tmp_path / "brew"
-    make_exe(brew / "spotdl")
-    assert find_spotdl("", tmp_path / "empty", env_path="/usr/bin", extra_dirs=[brew]) == (
-        str(brew / "spotdl"),
-        "known",
-    )
+    stub = make_exe(brew / exe_name("spotdl"))
+    found, source = find_spotdl("", tmp_path / "empty", env_path="/usr/bin", extra_dirs=[brew])
+    assert source == "known" and same_file(found, stub)
 
 
 def test_find_ffmpeg_uses_spotdl_copy(tmp_path):
-    make_exe(tmp_path / ".spotdl" / "ffmpeg")
-    assert find_ffmpeg(env_path="", extra_dirs=[], home=tmp_path).endswith("ffmpeg")
+    stub = make_exe(tmp_path / ".spotdl" / exe_name("ffmpeg"))
+    assert same_file(find_ffmpeg(env_path="", extra_dirs=[], home=tmp_path), stub)
+
