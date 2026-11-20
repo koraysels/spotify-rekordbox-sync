@@ -48,3 +48,9 @@ def exports_dir() -> Path:
     path = config_dir() / "exports"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def tools_dir() -> Path:
+    path = config_dir() / "tools"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
