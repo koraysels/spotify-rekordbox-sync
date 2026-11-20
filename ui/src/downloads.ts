@@ -11,6 +11,7 @@ import type {
 const ACTIVE = new Set(["queued", "downloading", "converting"]);
 const POLL_MS = 1500;
 const INSTALL_JOB = "install";
+const INSTALL_GIVE_UP_MS = 3 * 60 * 1000;
 
 /** Latest spotDL install progress; `message` carries the failure reason. */
 export interface InstallState {
@@ -152,6 +153,26 @@ export function useDownloads(spotifyIds: string[]) {
     setInstallState({ state: "downloading", message: "" });
     try {
       await rpc.call("downloader.install");
+      // Over HTTP there is no notification stream and install is not in status.jobs:
+      // poll until both tools are present.
+      if (!isTauri()) {
+        const deadline = Date.now() + INSTALL_GIVE_UP_MS;
+        for (;;) {
+          await new Promise((resolve) => window.setTimeout(resolve, POLL_MS));
+          const next = await refreshStatus();
+          if (next.spotdl.path && next.ffmpeg) {
+            setInstallState({ state: "done", message: "" });
+            return;
+          }
+          if (Date.now() > deadline) {
+            setInstallState({
+              state: "failed",
+              message: "Timed out waiting for spotDL; check the core log.",
+            });
+            return;
+          }
+        }
+      }
     } catch (error) {
       setInstallState({
         state: "failed",
@@ -159,7 +180,7 @@ export function useDownloads(spotifyIds: string[]) {
       });
       throw error;
     }
-  }, []);
+  }, [refreshStatus]);
 
-  return { jobs, records, status, installState, enqueue, cancel, resume, install };
+  return { jobs, records, status, refreshStatus, installState, enqueue, cancel, resume, install };
 }

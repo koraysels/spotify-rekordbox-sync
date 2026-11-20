@@ -35,14 +35,16 @@ export function SettingsPanel({
   const [dlClientId, setDlClientId] = useState(settings.downloaderClientId ?? "");
   const [dlSecret, setDlSecret] = useState("");
   const [spotdlPath, setSpotdlPath] = useState(settings.spotdlPath ?? "");
-  const { status, installState, install } = useDownloads([]);
+  const { status, refreshStatus, installState, install } = useDownloads([]);
   const installing = installState.state === "downloading";
 
   // Applies at once rather than on Save: switching on may need to fetch spotDL.
   const toggleDownloads = async (enabled: boolean) => {
     setDlEnabled(enabled);
     await onSave({ downloaderEnabled: enabled });
-    if (enabled && status && !status.spotdl.path) {
+    if (!enabled) return;
+    const current = status ?? (await refreshStatus().catch(() => null));
+    if (current && (!current.spotdl.path || !current.ffmpeg)) {
       await install().catch(() => {});
     }
   };
