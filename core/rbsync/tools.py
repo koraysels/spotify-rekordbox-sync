@@ -135,8 +135,11 @@ def install_spotdl(
     part = tools_dir / (name + ".part")
     try:
         fetch(_RELEASE_URL.format(v=SPOTDL_VERSION, asset=name), part)
-        digest = hashlib.sha256(part.read_bytes()).hexdigest()
-        if digest != expected:
+        hasher = hashlib.sha256()
+        with open(part, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(chunk)
+        if hasher.hexdigest() != expected:
             raise InstallError(f"checksum mismatch for {name}; download discarded")
         part.replace(dest)
     except BaseException:
@@ -144,11 +147,14 @@ def install_spotdl(
         raise
     dest.chmod(0o755)
     if system == "darwin":
-        subprocess.run(
-            ["xattr", "-d", "com.apple.quarantine", str(dest)],
-            capture_output=True,
-            check=False,
-        )
+        try:
+            subprocess.run(
+                ["xattr", "-d", "com.apple.quarantine", str(dest)],
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            pass
     return dest
 
 

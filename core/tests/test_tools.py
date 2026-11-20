@@ -45,7 +45,9 @@ def test_install_success_is_executable(tmp_path, monkeypatch):
     )
     path = install_spotdl(tmp_path, lambda url, dest: dest.write_bytes(payload), "darwin", "arm64")
     assert path == tmp_path / "spotdl-4.6.0-darwin"
-    assert os.access(path, os.X_OK)
+    assert path.read_bytes() == payload
+    if os.name != "nt":
+        assert os.access(path, os.X_OK)
 
 
 def test_install_without_asset_raises_with_instructions(tmp_path):
@@ -72,7 +74,7 @@ def test_find_spotdl_order(tmp_path):
         assert find_spotdl("", tools, env_path=str(path_dir)) == (str(installed), "installed")
     found = find_spotdl("", tmp_path / "none", env_path=str(path_dir))
     assert found[1] == "path"
-    assert find_spotdl("", tmp_path / "none", env_path="", extra_dirs=[])[1] in ("known", "")
+    assert find_spotdl("", tmp_path / "none", env_path="", extra_dirs=[]) == (None, "")
 
 
 def test_find_spotdl_in_known_dir_when_path_is_minimal(tmp_path):
