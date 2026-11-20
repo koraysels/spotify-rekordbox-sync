@@ -150,10 +150,17 @@ export function useDownloads(
         })),
       });
       // The core also notifies, but over HTTP there is no stream: seed from the reply.
+      const names = new Map(tracks.map((t) => [t.id, t.name]));
       setJobs((prev) => {
         const next = new Map(prev);
-        // Enqueue replies are summaries without a message.
-        for (const job of results) next.set(job.spotifyId, { ...job, message: job.message ?? "" });
+        // Enqueue replies are summaries without a message or name.
+        for (const job of results) {
+          next.set(job.spotifyId, {
+            ...job,
+            message: job.message ?? "",
+            name: job.name ?? names.get(job.spotifyId) ?? "",
+          });
+        }
         return next;
       });
     },

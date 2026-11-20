@@ -522,3 +522,30 @@ def test_install_failure_is_reported(env):
     wait_until(lambda: any(p.get("jobId") == "install" and p["state"] == "failed" for _, p in env.events))
     [failed] = [p for _, p in env.events if p.get("jobId") == "install" and p["state"] == "failed"]
     assert failed["message"] == "checksum mismatch"
+
+
+def test_progress_notifications_name_the_track(env):
+    d = env(writes_file())
+    [job] = d.enqueue([track()])
+    wait_all_terminal(d)
+    names = {p["name"] for m, p in env.events if m == "download.progress" and p["jobId"] == job["jobId"]}
+    assert names == {"Title 1"}
+
+
+def test_rate_limit_needs_429_as_a_word():
+    assert not is_rate_limited("Downloaded https://youtu.be/x4290abc")
+    assert is_rate_limited("HTTP Error 429")
+
+
+def test_appledouble_files_are_not_audio(env):
+    def run(args, cancel):
+        out = out_dir_of(args)
+        (out / "Artist - Title.opus").write_bytes(b"audio")
+        (out / "._Artist - Title.opus").write_bytes(b"resource fork")
+        return 0, "Downloaded"
+
+    d = env(run)
+    d.enqueue([track()])
+    wait_all_terminal(d)
+    assert job_states(d) == {"sp1": "done"}
+    assert (env.folder / "Warmup" / "Artist - Title.mp3").read_bytes() == b"audio"

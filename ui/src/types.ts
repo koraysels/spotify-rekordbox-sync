@@ -125,6 +125,8 @@ export type DownloadState =
 export interface DownloadJob {
   jobId: string;
   spotifyId: string;
+  /** Track title, for jobs whose playlist is not on screen. */
+  name: string;
   state: DownloadState;
   message: string;
   path: string;

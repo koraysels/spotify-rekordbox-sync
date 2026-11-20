@@ -36,7 +36,7 @@ MAX_FINISHED = 200  # finished jobs kept for status(); active ones are always ke
 
 _UNSAFE_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
-_RATE_LIMIT_RE = re.compile(r"rate limit|429|too many requests", re.IGNORECASE)
+_RATE_LIMIT_RE = re.compile(r"rate limit|\b429\b|too many requests", re.IGNORECASE)
 _AUDIO_EXTS = {".opus", ".m4a", ".mp3", ".ogg", ".webm", ".flac", ".wav", ".aac"}
 _FINISHED = {"done", "failed", "cancelled"}
 _READER_GRACE = 5.0
@@ -324,7 +324,7 @@ class Downloader:
 
     def _emit_install(self, state: str, message: str) -> None:
         self._emit("download.progress", {
-            "jobId": INSTALL_JOB, "spotifyId": "", "state": state,
+            "jobId": INSTALL_JOB, "spotifyId": "", "name": "", "state": state,
             "message": self._scrub(message), "path": "",
         })
 
@@ -424,7 +424,11 @@ class Downloader:
 
     @staticmethod
     def _audio(tmp: Path) -> list[Path]:
-        return [p for p in tmp.iterdir() if p.is_file() and p.suffix.lower() in _AUDIO_EXTS]
+        # "._x.opus" is macOS's AppleDouble metadata on exFAT/FAT drives, not audio.
+        return [
+            p for p in tmp.iterdir()
+            if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in _AUDIO_EXTS
+        ]
 
     # --- state + notifications (callers hold no lock) ------------------------
 
@@ -485,8 +489,8 @@ class Downloader:
 
     def _progress(self, job: _Job) -> None:
         self._emit("download.progress", {
-            "jobId": job.id, "spotifyId": job.track.spotify_id, "state": job.state,
-            "message": self._scrub(job.message), "path": job.path,
+            "jobId": job.id, "spotifyId": job.track.spotify_id, "name": job.track.name,
+            "state": job.state, "message": self._scrub(job.message), "path": job.path,
         })
 
     def _scrub(self, text: str) -> str:

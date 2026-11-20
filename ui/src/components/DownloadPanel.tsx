@@ -44,17 +44,18 @@ export function DownloadPanel({ jobs, records, status, titles, onCancelAll, onRe
 
         {list.length > 0 && (
           <div className="download-list">
-            {list.map((job) => (
-              <div className="download-row" key={job.jobId}>
-                <span title={titles.get(job.spotifyId) ?? job.spotifyId}>
-                  {titles.get(job.spotifyId) ?? job.spotifyId}
-                </span>
-                <span className="muted" title={job.message}>
-                  {job.state}
-                  {job.message ? ` · ${job.message}` : ""}
-                </span>
-              </div>
-            ))}
+            {list.map((job) => {
+              const title = titles.get(job.spotifyId) ?? (job.name || job.spotifyId);
+              return (
+                <div className="download-row" key={job.jobId}>
+                  <span title={title}>{title}</span>
+                  <span className="muted" title={job.message}>
+                    {job.state}
+                    {job.message ? ` · ${job.message}` : ""}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
 
