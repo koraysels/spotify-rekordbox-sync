@@ -55,6 +55,7 @@ def _local_track_to_json(track: LocalTrack) -> dict:
         "bit_rate": track.bit_rate,
         "file_size": track.file_size,
         "analysed": track.analysed,
+        "comment": track.comment,
     }
 
 
@@ -70,6 +71,7 @@ def _local_track_from_json(data: dict) -> LocalTrack:
         bit_rate=int(data.get("bit_rate") or 0),
         file_size=int(data.get("file_size") or 0),
         analysed=int(data.get("analysed") or 0),
+        comment=data.get("comment", ""),
     )
 
 

@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import paths
+from .downloader import DownloadConfig, Downloader, TrackRequest
+from .tools import (
+    SPOTDL_VERSION, ToolMissing, download_ffmpeg, find_ffmpeg, find_spotdl,
+    http_fetch, install_spotdl,
+)
 from .app import AppService
 from .spotify import PlaylistAccessDenied
 from .rpc import RpcServer
@@ -23,6 +28,12 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
     def status(**_):
         return service.status()
 
+    def setting(key: str) -> str:
+        return service.cache.get_setting(key, "") or ""
+
+    def download_folder() -> str:
+        return setting("download_folder") or str(Path.home() / "Downloads" / "rbsync")
+
     def settings_get(**_):
         return {
             "clientId": service.client_id(),
@@ -31,10 +42,17 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             "allowRemovals": service.allow_removals(),
             "onlySyncable": service.only_syncable(),
             "tagFeaturesOnSync": service.tag_features_on_sync(),
+            "downloaderEnabled": setting("downloader_enabled") == "1",
+            "downloadFolder": download_folder(),
+            "downloaderClientId": setting("downloader_client_id"),
+            "hasDownloaderSecret": bool(setting("downloader_client_secret")),
+            "spotdlPath": setting("spotdl_path"),
         }
 
     def settings_set(clientId=None, autoAccept=None, reject=None, allowRemovals=None,
-                     onlySyncable=None, tagFeaturesOnSync=None, **_):
+                     onlySyncable=None, tagFeaturesOnSync=None, downloaderEnabled=None,
+                     downloadFolder=None, downloaderClientId=None,
+                     downloaderClientSecret=None, spotdlPath=None, **_):
         if clientId is not None:
             service.cache.set_setting("spotify_client_id", str(clientId))
         if autoAccept is not None:
@@ -47,6 +65,16 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             service.cache.set_setting("only_syncable", "1" if onlySyncable else "0")
         if tagFeaturesOnSync is not None:
             service.cache.set_setting("tag_features_on_sync", "1" if tagFeaturesOnSync else "0")
+        if downloaderEnabled is not None:
+            service.cache.set_setting("downloader_enabled", "1" if downloaderEnabled else "0")
+        for key, value in (
+            ("download_folder", downloadFolder),
+            ("downloader_client_id", downloaderClientId),
+            ("downloader_client_secret", downloaderClientSecret),
+            ("spotdl_path", spotdlPath),
+        ):
+            if value is not None:
+                service.cache.set_setting(key, str(value))
         return settings_get()
 
     def auth_begin(redirectUri="http://127.0.0.1:8888/callback", **_):
@@ -286,7 +314,97 @@ def build_server(service: AppService | None = None, out=None) -> RpcServer:
             raise RuntimeError("Nothing to tag.")
         return service.apply_energy(levels, progress=server.progress)
 
+    def download_config() -> DownloadConfig:
+        spotdl, _ = find_spotdl(setting("spotdl_path"), paths.tools_dir())
+        if not spotdl:
+            raise ToolMissing(
+                "spotDL was not found. Install it from Settings, or set its path there."
+            )
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            raise ToolMissing(
+                "ffmpeg was not found. Use Install in Settings to fetch it, or install it yourself."
+            )
+        return DownloadConfig(
+            folder=Path(download_folder()).expanduser(),
+            spotdl=spotdl,
+            ffmpeg=ffmpeg,
+            client_id=setting("downloader_client_id"),
+            client_secret=setting("downloader_client_secret"),
+        )
+
+    downloader = Downloader(service.cache, download_config, server.notify)
+    server.add_closer(downloader.shutdown)
+
+    def downloader_status(**_):
+        spotdl, source = find_spotdl(setting("spotdl_path"), paths.tools_dir())
+        return {
+            "enabled": setting("downloader_enabled") == "1",
+            "spotdl": {"path": spotdl, "source": source},
+            "ffmpeg": find_ffmpeg(),
+            "version": SPOTDL_VERSION,
+            **downloader.status(),
+        }
+
+    def install_task() -> str:
+        tools = paths.tools_dir()
+        spotdl, _ = find_spotdl(setting("spotdl_path"), tools)
+        if not spotdl:
+            spotdl = str(install_spotdl(tools, http_fetch))
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            ffmpeg = download_ffmpeg(spotdl)
+        if not ffmpeg:
+            raise ToolMissing("spotDL is installed but ffmpeg could not be downloaded.")
+        return f"spotDL {SPOTDL_VERSION} ready, ffmpeg found at {ffmpeg}"
+
+    def downloader_install(**_):
+        return downloader.install(install_task)
+
+    def downloader_enqueue(tracks=None, playlistName="", **_):
+        if setting("downloader_enabled") != "1":
+            raise RuntimeError("Downloads are switched off in Settings.")
+        requests = [
+            TrackRequest(
+                spotify_id=t["spotifyId"],
+                url=t.get("url", ""),
+                name=t.get("name", ""),
+                artists=list(t.get("artists") or []),
+                album=t.get("album", ""),
+                isrc=t.get("isrc", ""),
+                playlist_name=playlistName,
+            )
+            for t in tracks or []
+        ]
+        return downloader.enqueue(requests)
+
+    def downloader_cancel(jobId=None, **_):
+        return {"cancelled": downloader.cancel(jobId)}
+
+    def downloader_resume(**_):
+        downloader.resume()
+        return {"paused": False}
+
+    def downloads_get(spotifyIds=None, **_):
+        records = service.cache.get_downloads(list(spotifyIds or []))
+        return {
+            sid: {
+                "status": r.status,
+                "path": r.path,
+                "playlistName": r.playlist_name,
+                "error": r.error,
+                "exists": bool(r.path) and Path(r.path).exists(),
+            }
+            for sid, r in records.items()
+        }
+
     for name, handler in (
+        ("downloader.status", downloader_status),
+        ("downloader.install", downloader_install),
+        ("downloader.enqueue", downloader_enqueue),
+        ("downloader.cancel", downloader_cancel),
+        ("downloader.resume", downloader_resume),
+        ("downloads.get", downloads_get),
         ("features.get", features_get),
         ("energy.scan", energy_scan),
         ("energy.apply", energy_apply),

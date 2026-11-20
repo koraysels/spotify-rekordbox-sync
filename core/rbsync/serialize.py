@@ -34,6 +34,7 @@ def candidate_to_dict(candidate: MatchCandidate) -> dict:
         "bitRate": candidate.track.bit_rate,
         "bpm": candidate.track.bpm,
         "key": candidate.track.key,
+        "comment": candidate.track.comment,
         "score": candidate.score,
         "reason": candidate.reason,
         "titleScore": candidate.title_score,
