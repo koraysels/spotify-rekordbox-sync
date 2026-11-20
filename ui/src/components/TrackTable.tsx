@@ -521,7 +521,8 @@ export function TrackTable({
                   </td>
                   <td className="col-band">
                     <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
-                    {dl && <DownloadBadge state={downloadStateOf(row.track.id, dl)} />}
+                    {/* Once matched, the track is in rekordbox: download state no longer matters. */}
+                    {dl && row.band === "reject" && <DownloadBadge state={downloadStateOf(row.track.id, dl)} />}
                     {isLowq(row) && (
                       <span className="band lowq" title="Fetched by rbsync from a lossy source; replace it when you can.">
                         lowq
