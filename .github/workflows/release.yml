@@ -27,7 +27,7 @@ jobs:
       matrix:
         include:
           - arch: aarch64
-            runner: macos-14
+            runner: macos-15
             optional: false
           - arch: x86_64
             runner: macos-15-intel
@@ -279,7 +279,7 @@ jobs:
 
       - name: Write release notes
         run: |
-          cat > notes.md <<'NOTES'
+          cat > install.md <<'NOTES'
           ## Install
 
           **macOS** — download the `.dmg` for your Mac (`aarch64` for Apple
@@ -314,6 +314,17 @@ jobs:
           Spotify setup takes about three minutes and is described in
           `docs/SPOTIFY_SETUP.md`.
           NOTES
+          # A version's own notes go first; their first line is the one-line
+          # summary the in-app update banner shows.
+          TAG="${{ steps.version.outputs.tag }}"
+          NOTES_FILE="docs/release-notes/$TAG.md"
+          if [ -f "$NOTES_FILE" ]; then
+            { cat "$NOTES_FILE"; printf '\n---\n\n'; cat install.md; } > notes.md
+            head -n 1 "$NOTES_FILE" > summary.txt
+          else
+            cp install.md notes.md
+            : > summary.txt
+          fi
 
       - name: Build the update manifest
         run: |
@@ -322,6 +333,7 @@ jobs:
             --tag "$TAG" \
             --artifacts artifacts \
             --repo "${{ github.repository }}" \
+            --notes "$(cat summary.txt)" \
             --out latest.json
           cat latest.json
 
