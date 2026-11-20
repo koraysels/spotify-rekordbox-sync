@@ -30,8 +30,8 @@ collection.
 - Progress is visible per track; the job is cancellable.
 - Downloads never block the rest of the app (plan, apply, browse).
 - Works on macOS (arm64), Windows, and wherever `spotdl` is on `PATH`.
-- Downloads are mp3 320 CBR labelled `lowq`: a stopgap, not a replacement for
-  bought files.
+- Downloads are CBR mp3 at a bitrate matched to the source (no inflated
+  320), labelled `lowq`: a stopgap, not a replacement for bought files.
 - Buy and search links (Beatport, Bandcamp, Traxsource, Juno, Discogs) on
   missing and `lowq` tracks, so stopgaps get replaced. Soulseek keeps working
   through the existing copy-query item.
@@ -79,11 +79,17 @@ collection.
   yt-dlp directly does not help: spotDL already uses yt-dlp, and the limit is
   what YouTube serves. Opus ~160 is roughly comparable to mp3 192–256; it is
   not 320.
-- rekordbox and CDJs do not play Opus, so the file must be converted. Target:
-  **mp3 320 kbps CBR**. mp3 is playable on every CDJ; CBR because older CDJs
-  can mis-seek and drift beatgrids on VBR mp3; 320 keeps the second lossy
-  generation as transparent as possible. The real quality stays that of the
-  Opus source. The UI says so where the feature is switched on.
+- rekordbox and CDJs do not play Opus, so the file must be converted to mp3
+  (playable on every CDJ), CBR because older CDJs can mis-seek and drift
+  beatgrids on VBR mp3.
+- **No artificial bitrate (the user's rule).** Encoding to 320 adds bits that
+  carry nothing. Encoding at the same number as the source loses quality,
+  because mp3 is less efficient than Opus and this is a second lossy
+  generation. Rule (my call on the factor): measure the source's real
+  bitrate, multiply by 1.25, take the next standard CBR step at or above
+  that from {128, 160, 192, 224, 256}, never above 256. Examples: Opus 160 →
+  224, Opus 130 → 192, AAC 128 → 160. The UI says the source quality where the
+  feature is switched on.
 
 ## Existing features: unchanged
 
@@ -124,8 +130,10 @@ broken and needs the user's say.
 
 **Audio quality (chosen by the user)**
 
-- **Opus source → mp3 320 CBR, labelled `lowq` (chosen).** Best a free
-  account gets, in a format every CDJ plays, clearly marked as a stopgap.
+- **Opus source → mp3 CBR matched to the source, labelled `lowq` (chosen).**
+  Best a free account gets, in a format every CDJ plays, clearly marked as a
+  stopgap, without inflated bitrate.
+- Opus → mp3 320. Rejected by the user: artificial bits.
 - Keep AAC 128 m4a without re-encode. No second generation, but clearly
   worse than the Opus source. Rejected.
 - Require YouTube Music Premium for 256 kbps AAC. The user has no Premium.
@@ -250,18 +258,17 @@ and alongside plan/apply.
    album, ISRC) and the Spotify playlist name the button was pressed for.
 2. Target folder `<downloadFolder>/<playlist name>/`, with the playlist name
    made filesystem-safe.
-3. Run, into the job's temp directory:
-   `spotdl download <spotify-track-url> --format mp3 --bitrate 320k
+3. Download the source without conversion, into the job's temp directory:
+   `spotdl download <spotify-track-url> --format opus --bitrate disable
    --output "<tmp>/{artists} - {title}.{output-ext}" --overwrite skip
    --ffmpeg <path> [--client-id … --client-secret …]`
-   with yt-dlp told to prefer the Opus stream (`--yt-dlp-args` with
-   `-f 251/bestaudio`), so the conversion starts from the best free source,
-   not AAC 128. spotDL writes title, artists, album, track number, artwork and
-   ISRC.
-4. Label the file: set the ID3 comment (`COMM`) to `lowq` (my call: comment,
-   because rekordbox imports it into its Comments column, where it is
-   searchable and sortable). Write it after spotDL finishes, with ffmpeg
-   metadata copy or mutagen, replacing whatever comment spotDL wrote.
+   (`--format m4a` as fallback when no Opus stream exists). spotDL writes
+   title, artists, album, track number, artwork and ISRC.
+4. Measure the source bitrate with `ffprobe`, pick the mp3 bitrate by the rule
+   in Constraints, and encode once with ffmpeg (`libmp3lame`, CBR, ID3v2.3),
+   copying all tags and the cover, and setting the comment to `lowq` (my call:
+   comment, because rekordbox imports it into its Comments column, where it is
+   searchable and sortable). The source file is deleted afterwards.
 5. Verify exactly one audio file appeared, move it into the target folder
    (if a file with that name already exists there, keep it and record that
    path), record the result. This is the "after download" step where the
