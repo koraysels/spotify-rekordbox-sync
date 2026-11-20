@@ -1578,3 +1578,11 @@ body.resizing-column {
   opacity: 0.5;
   cursor: default;
 }
+
+.info-find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}

@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import type { Candidate, TrackFeatures, TrackPlan } from "../types";
 import type { FileStatus } from "./TrackTable";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { camelotOf } from "../keys";
+import { findLinks, isLowq } from "../findLinks";
+import { isTauri } from "../rpc";
 
 interface Props {
   row: TrackPlan;
@@ -130,6 +133,22 @@ export function TrackInfoPanel({ row, file, features, onClose, onChooseMatch, on
             )}
           </section>
         </div>
+
+        {(row.band === "reject" || isLowq(row)) && (
+          <div className="info-find">
+            <span className="muted">Find on</span>
+            {findLinks(row.track).map((link) => (
+              <button
+                key={link.label}
+                className="chip"
+                disabled={!isTauri()}
+                onClick={() => void openUrl(link.url).catch(() => {})}
+              >
+                {link.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="modal-actions">
           {(row.reason === "rejected" || row.reason === "cached") && (

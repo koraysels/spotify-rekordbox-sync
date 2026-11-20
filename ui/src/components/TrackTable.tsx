@@ -6,6 +6,7 @@ import { TrackInfoPanel } from "./TrackInfoPanel";
 import { camelotOf } from "../keys";
 
 import { copyText, searchQueryFor } from "../clipboard";
+import { findLinks, isLowq } from "../findLinks";
 import { isTauri } from "../rpc";
 import type {
   Band,
@@ -70,8 +71,6 @@ function needsDownload(row: TrackPlan, downloads: DownloadProps): boolean {
   const state = downloadStateOf(row.track.id, downloads);
   return state?.kind !== "active" && state?.kind !== "downloaded";
 }
-
-const LOWQ = /\blowq\b/i;
 
 interface Props {
   plan: PlaylistPlan | null;
@@ -410,6 +409,16 @@ export function TrackTable({
         });
       }
     }
+    if (!many && (row.band === "reject" || isLowq(row))) {
+      items.push({ separator: true });
+      for (const link of findLinks(row.track)) {
+        items.push({
+          label: `Find on ${link.label}`,
+          disabled: !isTauri(),
+          onSelect: () => void openUrl(link.url).catch(() => {}),
+        });
+      }
+    }
     return items;
   };
 
@@ -513,7 +522,7 @@ export function TrackTable({
                   <td className="col-band">
                     <FileAwareBand row={row} file={files.get(row.contentId ?? "")} />
                     {dl && <DownloadBadge state={downloadStateOf(row.track.id, dl)} />}
-                    {row.band !== "reject" && best && LOWQ.test(best.comment ?? "") && (
+                    {isLowq(row) && (
                       <span className="band lowq" title="Fetched by rbsync from a lossy source; replace it when you can.">
                         lowq
                       </span>
